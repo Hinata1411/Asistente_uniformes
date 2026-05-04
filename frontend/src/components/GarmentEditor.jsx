@@ -1,5 +1,5 @@
-import { Stage, Layer, Image as KonvaImage } from 'react-konva'
-import { useEffect, useState } from 'react'
+import { Stage, Layer, Image as KonvaImage, Transformer } from 'react-konva'
+import { useEffect, useRef, useState } from 'react'
 import shirtWhite from '../assets/products/playera-negra.jpg'
 
 function useImage(src) {
@@ -22,6 +22,9 @@ function GarmentEditor() {
   const [logoSrc, setLogoSrc] = useState(null)
   const logoImage = useImage(logoSrc)
 
+  const shapeRef = useRef(null)
+  const trRef = useRef(null)
+
   const [logoPosition, setLogoPosition] = useState({
     x: 190,
     y: 180,
@@ -29,7 +32,6 @@ function GarmentEditor() {
 
   const handleLogoUpload = (e) => {
     const file = e.target.files[0]
-
     if (!file) return
 
     const imageUrl = URL.createObjectURL(file)
@@ -67,20 +69,29 @@ function GarmentEditor() {
               )}
 
               {logoImage && (
-                <KonvaImage
-                  image={logoImage}
-                  x={logoPosition.x}
-                  y={logoPosition.y}
-                  width={120}
-                  height={120}
-                  draggable
-                  onDragEnd={(e) => {
-                    setLogoPosition({
-                      x: e.target.x(),
-                      y: e.target.y(),
-                    })
-                  }}
-                />
+                <>
+                  <KonvaImage
+                    ref={shapeRef}
+                    image={logoImage}
+                    x={logoPosition.x}
+                    y={logoPosition.y}
+                    width={120}
+                    height={120}
+                    draggable
+                    onClick={() => {
+                      trRef.current.nodes([shapeRef.current])
+                      trRef.current.getLayer().batchDraw()
+                    }}
+                    onDragEnd={(e) => {
+                      setLogoPosition({
+                        x: e.target.x(),
+                        y: e.target.y(),
+                      })
+                    }}
+                  />
+
+                  <Transformer ref={trRef} />
+                </>
               )}
             </Layer>
           </Stage>

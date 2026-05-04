@@ -21,7 +21,8 @@ function GarmentEditor() {
 
   const [logoSrc, setLogoSrc] = useState(null)
   const logoImage = useImage(logoSrc)
-
+  
+  const stageRef = useRef(null)
   const shapeRef = useRef(null)
   const trRef = useRef(null)
 
@@ -56,7 +57,7 @@ function GarmentEditor() {
         </div>
 
         <div className="d-flex justify-content-center">
-          <Stage width={500} height={600}>
+          <Stage width={500} height={600} ref={stageRef}>
             <Layer>
               {shirtImage && (
                 <KonvaImage
@@ -95,6 +96,23 @@ function GarmentEditor() {
               )}
             </Layer>
           </Stage>
+        </div>
+
+        <div className="text-center mt-3">
+            <button
+                className="btn btn-primary"
+                onClick={() => {
+                const uri = stageRef.current.toDataURL()
+                console.log(uri)
+
+                const link = document.createElement('a')
+                link.download = 'preview.png'
+                link.href = uri
+                link.click()
+                }}
+            >
+                Descargar vista previa
+            </button>
         </div>
       </div>
     </div>

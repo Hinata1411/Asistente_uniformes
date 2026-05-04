@@ -16,12 +16,12 @@ function useImage(src) {
   return image
 }
 
-function GarmentEditor() {
+function GarmentEditor({ onSave }) {
   const shirtImage = useImage(shirtWhite)
 
   const [logoSrc, setLogoSrc] = useState(null)
   const logoImage = useImage(logoSrc)
-  
+
   const stageRef = useRef(null)
   const shapeRef = useRef(null)
   const trRef = useRef(null)
@@ -38,6 +38,28 @@ function GarmentEditor() {
     const imageUrl = URL.createObjectURL(file)
     setLogoSrc(imageUrl)
   }
+
+  const handleSave = () => {
+    if (trRef.current) {
+        trRef.current.nodes([])
+        trRef.current.getLayer().batchDraw()
+    }
+
+    const preview = stageRef.current.toDataURL()
+
+    const orderData = {
+        previewImage: preview,
+        logoPosition,
+        logoSrc,
+        createdAt: new Date().toISOString(),
+    }
+
+    console.log('Pedido guardado:', orderData)
+
+    if (onSave) {
+        onSave(orderData)
+    }
+    }
 
   return (
     <div className="card shadow-sm">
@@ -99,20 +121,12 @@ function GarmentEditor() {
         </div>
 
         <div className="text-center mt-3">
-            <button
-                className="btn btn-primary"
-                onClick={() => {
-                const uri = stageRef.current.toDataURL()
-                console.log(uri)
-
-                const link = document.createElement('a')
-                link.download = 'preview.png'
-                link.href = uri
-                link.click()
-                }}
-            >
-                Descargar vista previa
-            </button>
+          <button
+            className="btn btn-success"
+            onClick={handleSave}
+          >
+            Guardar pedido
+          </button>
         </div>
       </div>
     </div>

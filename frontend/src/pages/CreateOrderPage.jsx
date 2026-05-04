@@ -1,11 +1,21 @@
+import { db } from '../firebase/config'
+import { collection, addDoc } from 'firebase/firestore'
 import GarmentEditor from '../components/GarmentEditor'
 import { useState } from 'react'
 
 function CreateOrderPage() {
   const [orders, setOrders] = useState([])
 
-  const handleSaveOrder = (order) => {
-    setOrders((prev) => [...prev, order])
+  const handleSaveOrder = async (order) => {
+    try {
+      const docRef = await addDoc(collection(db, "orders"), order)
+
+      console.log("Pedido guardado en Firebase:", docRef.id)
+
+      setOrders((prev) => [...prev, { ...order, id: docRef.id }])
+    } catch (error) {
+      console.error("Error guardando pedido:", error)
+    }
   }
 
   return (

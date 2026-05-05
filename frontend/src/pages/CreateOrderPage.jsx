@@ -141,14 +141,43 @@ function CreateOrderPage() {
 
       <hr />
 
-      <h4>Pedidos guardados (local)</h4>
+      <h4>Pedidos guardados</h4>
 
       {orders.map((o, index) => (
-        <div key={index} className="card mb-3 p-2">
-          <img src={o.previewImage} width={150} />
-          <p className="mb-0">
-            Posición: {o.logoPosition.x}, {o.logoPosition.y}
-          </p>
+        <div key={o.id} className="card mb-3 shadow-sm">
+          <div className="row g-0">
+            <div className="col-md-3 p-2">
+              <img
+                src={o.previewImage}
+                className="img-fluid rounded"
+                alt="Vista previa del pedido"
+              />
+            </div>
+
+            <div className="col-md-9">
+              <div className="card-body">
+                <h5 className="card-title">
+                  {o.product || 'Sin prenda seleccionada'}
+                </h5>
+
+                <p className="mb-1">
+                  <strong>Talla:</strong> {o.size || 'No definida'}
+                </p>
+
+                <p className="mb-1">
+                  <strong>Cantidad:</strong> {o.quantity || 0}
+                </p>
+
+                <p className="mb-1">
+                  <strong>Técnica:</strong> {o.technique || 'No definida'}
+                </p>
+
+                <p className="mb-1">
+                  <strong>Estado:</strong> Pendiente de aprobación
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       ))}
     </div>

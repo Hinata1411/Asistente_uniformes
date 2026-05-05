@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from './firebase/config'
 
 import CreateOrderPage from './pages/CreateOrderPage'
@@ -20,6 +20,14 @@ function AppContent() {
     return () => unsubscribe()
   }, [])
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+    } catch (error) {
+      console.error('Error cerrando sesión:', error)
+    }
+  }
+
   return (
     <>
       {user && location.pathname !== '/login' && (
@@ -37,6 +45,13 @@ function AppContent() {
               Historial
             </Link>
           </div>
+
+          <button
+            className="btn btn-outline-light"
+            onClick={handleLogout}
+          >
+            Cerrar sesión
+          </button>
         </nav>
       )}
 

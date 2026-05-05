@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { useEffect, useState } from 'react'
+import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase/config'
 import { useNavigate } from 'react-router-dom'
 
@@ -7,6 +7,16 @@ function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        navigate('/crearpedido')
+      }
+    })
+
+    return () => unsubscribe()
+  }, [navigate])
 
   const handleLogin = async (e) => {
     e.preventDefault()

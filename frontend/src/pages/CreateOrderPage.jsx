@@ -1,8 +1,7 @@
 import { db } from '../firebase/config'
-import { collection, addDoc } from 'firebase/firestore'
+import { collection, addDoc, getDocs, doc, updateDoc } from 'firebase/firestore'
 import { storage } from '../firebase/config'
 import { ref, uploadString, getDownloadURL } from 'firebase/storage'
-import { getDocs } from 'firebase/firestore'
 import { useEffect } from 'react'
 import GarmentEditor from '../components/GarmentEditor'
 import { useState } from 'react'
@@ -67,6 +66,26 @@ function CreateOrderPage() {
     quantity: 1,
     technique: ''
   })
+
+  const handleChangeStatus = async (orderId, newStatus) => {
+    try {
+      const orderRef = doc(db, "orders", orderId)
+
+      await updateDoc(orderRef, {
+        status: newStatus
+      })
+
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? { ...order, status: newStatus }
+            : order
+        )
+      )
+    } catch (error) {
+      console.error("Error actualizando estado:", error)
+    }
+  }
 
   return (
     <div className="container mt-4">
@@ -179,6 +198,20 @@ function CreateOrderPage() {
                       {o.status || 'pendiente_aprobacion'}
                     </span>
                 </p>
+                <div className="mt-3">
+                  <label className="form-label">Cambiar estado</label>
+                  <select
+                    className="form-select"
+                    value={o.status || 'pendiente_aprobacion'}
+                    onChange={(e) => handleChangeStatus(o.id, e.target.value)}
+                  >
+                    <option value="pendiente_aprobacion">Pendiente de aprobación</option>
+                    <option value="aprobado">Aprobado</option>
+                    <option value="en_produccion">En producción</option>
+                    <option value="terminado">Terminado</option>
+                    <option value="entregado">Entregado</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

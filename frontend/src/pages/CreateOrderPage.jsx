@@ -5,6 +5,7 @@ import { ref, uploadString, getDownloadURL } from 'firebase/storage'
 import { useEffect } from 'react'
 import GarmentEditor from '../components/GarmentEditor'
 import { useState } from 'react'
+import jsPDF from 'jspdf'
 
 function CreateOrderPage() {
   const [orders, setOrders] = useState([])
@@ -47,6 +48,7 @@ function CreateOrderPage() {
         ...order,
         ...form, 
         previewImage: downloadURL,
+        previewBase64: order.previewImage,
         status: 'pendiente_aprobacion'
       }
 
@@ -125,6 +127,47 @@ function CreateOrderPage() {
 
       return `https://wa.me/502${order.phone}?text=${encodedMessage}`
     }
+
+
+  const handleDownloadOrderPDF = async (order) => {
+    const doc = new jsPDF()
+
+    doc.setFontSize(18)
+    doc.text('Pedido personalizado', 20, 20)
+
+    doc.setFontSize(12)
+    doc.text(`Cliente: ${order.customerName || 'No definido'}`, 20, 40)
+    doc.text(`Teléfono: ${order.phone || 'No definido'}`, 20, 50)
+    doc.text(`Prenda: ${order.product || 'No definida'}`, 20, 60)
+    doc.text(`Talla: ${order.size || 'No definida'}`, 20, 70)
+    doc.text(`Cantidad: ${order.quantity || 0}`, 20, 80)
+    doc.text(`Técnica: ${order.technique || 'No definida'}`, 20, 90)
+    doc.text(`Estado: ${order.status || 'pendiente_aprobacion'}`, 20, 100)
+
+    doc.text('Recomendación del asistente:', 20, 115)
+    doc.text(getAssistantRecommendation(order), 20, 125, {
+      maxWidth: 170,
+    })
+
+    try {
+      const imageBase64 = order.previewBase64
+      doc.text('Vista previa:', 20, 145)
+
+      doc.addImage(
+        imageBase64,
+        'PNG',
+        20,
+        155,
+        80,
+        95
+      )
+    } catch (error) {
+      console.error('Error agregando imagen al PDF:', error)
+      doc.text('No se pudo cargar la vista previa.', 20, 155)
+    }
+
+    doc.save(`pedido-${order.customerName || 'cliente'}.pdf`)
+  }
 
   return (
     <div className="container mt-4">
@@ -299,6 +342,12 @@ function CreateOrderPage() {
                   >
                     Enviar por WhatsApp
                   </a>
+                  <button
+                    className="btn btn-outline-primary me-2"
+                    onClick={() => handleDownloadOrderPDF(o)}
+                  >
+                    Descargar pedido PDF
+                  </button>
                 </div>
               </div>
             </div>

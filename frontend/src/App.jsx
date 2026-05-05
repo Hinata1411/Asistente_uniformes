@@ -61,7 +61,7 @@ function AppContent() {
         <Route
           path="/crearpedido"
           element={
-            <PrivateRoute user={user}>
+            <PrivateRoute allowedRoles={['admin', 'empleado']}>
               <CreateOrderPage />
             </PrivateRoute>
           }
@@ -70,7 +70,7 @@ function AppContent() {
         <Route
           path="/historial"
           element={
-            <PrivateRoute user={user}>
+            <PrivateRoute allowedRoles={['admin']}>
               <OrdersHistoryPage />
             </PrivateRoute>
           }

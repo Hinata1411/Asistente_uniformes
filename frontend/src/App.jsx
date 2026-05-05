@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from './firebase/config'
+import { useAuth } from './context/AuthContext'
 
 import CreateOrderPage from './pages/CreateOrderPage'
 import OrdersHistoryPage from './pages/OrdersHistoryPage'
@@ -9,7 +10,7 @@ import LoginPage from './pages/LoginPage'
 import PrivateRoute from './components/PrivateRoute'
 
 function AppContent() {
-  const [user, setUser] = useState(null)
+  const {user, role } = useAuth()
   const location = useLocation()
 
   useEffect(() => {
@@ -36,15 +37,21 @@ function AppContent() {
             Asistente Uniformes
           </Link>
 
-          <div className="navbar-nav">
+          <div className="navbar-nav me-auto">
             <Link className="nav-link" to="/crearpedido">
               Crear pedido
             </Link>
 
-            <Link className="nav-link" to="/historial">
-              Historial
-            </Link>
+            {role === 'admin' && (
+              <Link className="nav-link" to="/historial">
+                Historial
+              </Link>
+            )}
           </div>
+
+          <span className="text-white me-3">
+            Rol: {role || 'sin rol'}
+          </span>
 
           <button
             className="btn btn-outline-light"

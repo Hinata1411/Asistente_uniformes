@@ -47,7 +47,8 @@ function CreateOrderPage() {
       const newOrder = {
         ...order,
         ...form, 
-        previewImage: downloadURL
+        previewImage: downloadURL,
+        status: 'pendiente_aprobacion'
       }
 
       // 5. Guardar en Firestore
@@ -173,7 +174,10 @@ function CreateOrderPage() {
                 </p>
 
                 <p className="mb-1">
-                  <strong>Estado:</strong> Pendiente de aprobación
+                  <strong>Estado:</strong>{' '}
+                    <span className="badge bg-warning text-dark">
+                      {o.status || 'pendiente_aprobacion'}
+                    </span>
                 </p>
               </div>
             </div>

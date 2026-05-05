@@ -31,7 +31,7 @@ function CreateOrderPage() {
     loadOrders()
   }, [])
 
-  
+
   const handleSaveOrder = async (order) => {
     try {
       // 1. Crear referencia en storage
@@ -46,13 +46,12 @@ function CreateOrderPage() {
       // 4. Crear nuevo objeto con URL en lugar de base64
       const newOrder = {
         ...order,
+        ...form, 
         previewImage: downloadURL
       }
 
       // 5. Guardar en Firestore
       const docRef = await addDoc(collection(db, "orders"), newOrder)
-
-      console.log("Pedido guardado con imagen:", docRef.id)
 
       setOrders((prev) => [...prev, { ...newOrder, id: docRef.id }])
 
@@ -61,10 +60,82 @@ function CreateOrderPage() {
     }
   }
 
+  const [form, setForm] = useState({
+    product: '',
+    size: '',
+    quantity: 1,
+    technique: ''
+  })
 
   return (
     <div className="container mt-4">
       <h2>Crear Pedido Personalizado</h2>
+
+      <div className="card p-3 mb-3">
+        <h5>Datos del pedido</h5>
+
+        <div className="row">
+          <div className="col-md-3">
+            <label>Prenda</label>
+            <select
+              className="form-control"
+              value={form.product}
+              onChange={(e) =>
+                setForm({ ...form, product: e.target.value })
+              }
+            >
+              <option value="">Seleccione</option>
+              <option>Playera</option>
+              <option>Sudadero</option>
+              <option>Gorra</option>
+            </select>
+          </div>
+
+          <div className="col-md-3">
+            <label>Talla</label>
+            <select
+              className="form-control"
+              value={form.size}
+              onChange={(e) =>
+                setForm({ ...form, size: e.target.value })
+              }
+            >
+              <option value="">Seleccione</option>
+              <option>S</option>
+              <option>M</option>
+              <option>L</option>
+            </select>
+          </div>
+
+          <div className="col-md-3">
+            <label>Cantidad</label>
+            <input
+              type="number"
+              className="form-control"
+              value={form.quantity}
+              onChange={(e) =>
+                setForm({ ...form, quantity: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label>Técnica</label>
+            <select
+              className="form-control"
+              value={form.technique}
+              onChange={(e) =>
+                setForm({ ...form, technique: e.target.value })
+              }
+            >
+              <option value="">Seleccione</option>
+              <option>DTF</option>
+              <option>Bordado</option>
+              <option>Sublimación</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
       <GarmentEditor onSave={handleSaveOrder} />
 

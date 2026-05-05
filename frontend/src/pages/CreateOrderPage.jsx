@@ -2,12 +2,36 @@ import { db } from '../firebase/config'
 import { collection, addDoc } from 'firebase/firestore'
 import { storage } from '../firebase/config'
 import { ref, uploadString, getDownloadURL } from 'firebase/storage'
+import { getDocs } from 'firebase/firestore'
+import { useEffect } from 'react'
 import GarmentEditor from '../components/GarmentEditor'
 import { useState } from 'react'
 
 function CreateOrderPage() {
   const [orders, setOrders] = useState([])
 
+  
+  const loadOrders = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "orders"))
+
+      const ordersData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+
+      setOrders(ordersData)
+
+    } catch (error) {
+      console.error("Error cargando pedidos:", error)
+    }
+  }
+
+  useEffect(() => {
+    loadOrders()
+  }, [])
+
+  
   const handleSaveOrder = async (order) => {
     try {
       // 1. Crear referencia en storage
@@ -36,6 +60,7 @@ function CreateOrderPage() {
       console.error("Error guardando pedido:", error)
     }
   }
+
 
   return (
     <div className="container mt-4">

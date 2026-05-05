@@ -12,6 +12,8 @@ import jsPDF from 'jspdf'
 function OrdersHistoryPage() {
   const [orders, setOrders] = useState([])
   const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
 
   const loadOrders = async () => {
     try {
@@ -99,19 +101,19 @@ function OrdersHistoryPage() {
 
   const generateWhatsAppLink = (order) => {
     const message = `
-Hola ${order.customerName || ''},
+      Hola ${order.customerName || ''},
 
-Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
+      Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
 
-Detalle:
-Prenda: ${order.product || 'No definida'}
-Talla: ${order.size || 'No definida'}
-Cantidad: ${order.quantity || 0}
-Técnica: ${order.technique || 'No definida'}
+      Detalle:
+      Prenda: ${order.product || 'No definida'}
+      Talla: ${order.size || 'No definida'}
+      Cantidad: ${order.quantity || 0}
+      Técnica: ${order.technique || 'No definida'}
 
-Vista previa:
-${order.previewImage || 'No disponible'}
-    `
+      Vista previa:
+      ${order.previewImage || 'No disponible'}
+          `
 
     const encodedMessage = encodeURIComponent(message)
     return `https://wa.me/502${order.phone}?text=${encodedMessage}`
@@ -161,6 +163,17 @@ ${order.previewImage || 'No disponible'}
     docPDF.save(`pedido-${order.customerName || 'cliente'}.pdf`)
   }
 
+  const filteredOrders = orders.filter((o) => {
+      const matchesSearch =
+        o.customerName?.toLowerCase().includes(search.toLowerCase()) ||
+        o.product?.toLowerCase().includes(search.toLowerCase())
+
+      const matchesStatus =
+        statusFilter === '' || o.status === statusFilter
+
+      return matchesSearch && matchesStatus
+    })
+
   return (
     <div className="container mt-4">
       <h2>Historial de pedidos</h2>
@@ -169,7 +182,39 @@ ${order.previewImage || 'No disponible'}
         <p className="text-muted">No hay pedidos registrados.</p>
       )}
 
-      {orders.map((o) => {
+      <div className="card p-3 mb-3">
+        <div className="row">
+
+          <div className="col-md-6">
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Buscar por cliente o prenda..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="col-md-6">
+            <select
+              className="form-control"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">Todos los estados</option>
+              <option value="pendiente_aprobacion">Pendiente</option>
+              <option value="aprobado">Aprobado</option>
+              <option value="en_produccion">Producción</option>
+              <option value="terminado">Terminado</option>
+              <option value="entregado">Entregado</option>
+              <option value="anulado">Anulado</option>
+            </select>
+          </div>
+
+        </div>
+      </div>
+
+      {filteredOrders.map((o) => {
         const isCancelled = o.status === 'anulado'
 
         return (

@@ -1,7 +1,7 @@
 import { db } from '../firebase/config'
-import { collection, addDoc, getDocs, doc, updateDoc } from 'firebase/firestore'
+import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { storage } from '../firebase/config'
-import { ref, uploadString, getDownloadURL } from 'firebase/storage'
+import { ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage'
 import { useEffect } from 'react'
 import GarmentEditor from '../components/GarmentEditor'
 import { useState } from 'react'
@@ -35,7 +35,8 @@ function CreateOrderPage() {
   const handleSaveOrder = async (order) => {
     try {
       // 1. Crear referencia en storage
-      const storageRef = ref(storage, `orders/${Date.now()}.png`)
+      const previewPath = `orders/${Date.now()}.png`
+      const storageRef = ref(storage, previewPath)
 
       // 2. Subir imagen (base64)
       await uploadString(storageRef, order.previewImage, 'data_url')
@@ -49,6 +50,7 @@ function CreateOrderPage() {
         ...form, 
         previewImage: downloadURL,
         previewBase64: order.previewImage,
+        previewPath,
         status: 'pendiente_aprobacion'
       }
 
@@ -105,6 +107,27 @@ function CreateOrderPage() {
     }
 
     return 'Seleccione una técnica para recibir recomendación.'
+  }
+
+  const handleDeleteOrder = async (order) => {
+    const confirmDelete = window.confirm("¿Seguro que quieres eliminar este pedido?")
+
+    if (!confirmDelete) return
+
+    try {
+      if (order.previewPath) {
+        const imageRef = ref(storage, order.previewPath)
+        await deleteObject(imageRef)
+      }
+
+      await deleteDoc(doc(db, "orders", order.id))
+
+      setOrders((prev) =>
+        prev.filter((item) => item.id !== order.id)
+      )
+    } catch (error) {
+      console.error("Error eliminando pedido:", error)
+    }
   }
 
   const generateWhatsAppLink = (order) => {
@@ -335,6 +358,12 @@ function CreateOrderPage() {
                   </select>
                 </div>
                 <div className="mt-3">
+                  <button
+                    className="btn btn-danger ms-2"
+                    onClick={() => handleDeleteOrder(o)}
+                  >
+                    Eliminar
+                  </button>
                   <a
                     href={generateWhatsAppLink(o)}
                     target="_blank"

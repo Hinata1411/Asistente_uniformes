@@ -87,6 +87,22 @@ function CreateOrderPage() {
     }
   }
 
+  const getAssistantRecommendation = (order) => {
+    if (order.technique === 'DTF') {
+      return 'Recomendado para diseños con varios colores y detalles.'
+    }
+
+    if (order.technique === 'Bordado') {
+      return 'Ideal para logos pequeños, uniformes y acabados profesionales.'
+    }
+
+    if (order.technique === 'Sublimación') {
+      return 'Ideal para prendas claras o diseños completos.'
+    }
+
+    return 'Seleccione una técnica para recibir recomendación.'
+  }
+
   return (
     <div className="container mt-4">
       <h2>Crear Pedido Personalizado</h2>
@@ -190,6 +206,10 @@ function CreateOrderPage() {
 
                 <p className="mb-1">
                   <strong>Técnica:</strong> {o.technique || 'No definida'}
+                </p>
+
+                <p className="mb-1">
+                  <strong>Asistente:</strong> {getAssistantRecommendation(o)}
                 </p>
 
                 <p className="mb-1">

@@ -61,6 +61,8 @@ function CreateOrderPage() {
   }
 
   const [form, setForm] = useState({
+    customerName: '',
+    phone: '',
     product: '',
     size: '',
     quantity: 1,
@@ -109,6 +111,34 @@ function CreateOrderPage() {
 
       <div className="card p-3 mb-3">
         <h5>Datos del pedido</h5>
+
+        <div className="row mb-3">
+          <div className="col-md-6">
+            <label>Nombre del cliente</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Ej. Carlos Pérez"
+              value={form.customerName}
+              onChange={(e) =>
+                setForm({ ...form, customerName: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="col-md-6">
+            <label>Teléfono</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Ej. 5555-5555"
+              value={form.phone}
+              onChange={(e) =>
+                setForm({ ...form, phone: e.target.value })
+              }
+            />
+          </div>
+        </div>
 
         <div className="row">
           <div className="col-md-3">
@@ -195,6 +225,14 @@ function CreateOrderPage() {
                 <h5 className="card-title">
                   {o.product || 'Sin prenda seleccionada'}
                 </h5>
+
+                <p className="mb-1">
+                  <strong>Cliente:</strong> {o.customerName || 'No definido'}
+                </p>
+
+                <p className="mb-1">
+                  <strong>Teléfono:</strong> {o.phone || 'No definido'}
+                </p>
 
                 <p className="mb-1">
                   <strong>Talla:</strong> {o.size || 'No definida'}

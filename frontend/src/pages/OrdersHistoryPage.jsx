@@ -1,51 +1,38 @@
 import { useEffect, useState } from 'react'
-import { db } from '../firebase/config'
-import { collection, getDocs } from 'firebase/firestore'
 import { useNavigate } from 'react-router-dom'
+import { db, storage } from '../firebase/config'
+import {
+  collection,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc
+} from 'firebase/firestore'
+import { ref, deleteObject } from 'firebase/storage'
+import jsPDF from 'jspdf'
 
 function OrdersHistoryPage() {
-
   const [orders, setOrders] = useState([])
   const navigate = useNavigate()
 
   const loadOrders = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, "orders"))
+      const querySnapshot = await getDocs(collection(db, 'orders'))
 
-      const ordersData = querySnapshot.docs.map(doc => ({
+      const ordersData = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       }))
 
       setOrders(ordersData)
     } catch (error) {
-      console.error(error)
+      console.error('Error cargando pedidos:', error)
     }
   }
 
   useEffect(() => {
     loadOrders()
   }, [])
-
-  const handleChangeStatus = async (orderId, newStatus) => {
-    try {
-      const orderRef = doc(db, "orders", orderId)
-
-      await updateDoc(orderRef, {
-        status: newStatus
-      })
-
-      setOrders((prev) =>
-        prev.map((order) =>
-          order.id === orderId
-            ? { ...order, status: newStatus }
-            : order
-        )
-      )
-    } catch (error) {
-      console.error("Error actualizando estado:", error)
-    }
-  }
 
   const getAssistantRecommendation = (order) => {
     if (order.technique === 'DTF') {
@@ -63,8 +50,30 @@ function OrdersHistoryPage() {
     return 'Seleccione una técnica para recibir recomendación.'
   }
 
+  const handleChangeStatus = async (orderId, newStatus) => {
+    try {
+      const orderRef = doc(db, 'orders', orderId)
+
+      await updateDoc(orderRef, {
+        status: newStatus
+      })
+
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? { ...order, status: newStatus }
+            : order
+        )
+      )
+    } catch (error) {
+      console.error('Error actualizando estado:', error)
+    }
+  }
+
   const handleDeleteOrder = async (order) => {
-    const confirmDelete = window.confirm("¿Seguro que quieres eliminar este pedido?")
+    const confirmDelete = window.confirm(
+      '¿Seguro que quieres eliminar este pedido?'
+    )
 
     if (!confirmDelete) return
 
@@ -74,83 +83,83 @@ function OrdersHistoryPage() {
         await deleteObject(imageRef)
       }
 
-      await deleteDoc(doc(db, "orders", order.id))
+      await deleteDoc(doc(db, 'orders', order.id))
 
       setOrders((prev) =>
         prev.filter((item) => item.id !== order.id)
       )
     } catch (error) {
-      console.error("Error eliminando pedido:", error)
+      console.error('Error eliminando pedido:', error)
     }
   }
 
   const generateWhatsAppLink = (order) => {
-      const message = `
-    Hola ${order.customerName},
+    const message = `
+Hola ${order.customerName || ''},
 
-    Tu pedido está en estado: ${order.status}
+Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
 
-    Detalle:
-    Prenda: ${order.product}
-    Talla: ${order.size}
-    Cantidad: ${order.quantity}
-    Técnica: ${order.technique}
+Detalle:
+Prenda: ${order.product || 'No definida'}
+Talla: ${order.size || 'No definida'}
+Cantidad: ${order.quantity || 0}
+Técnica: ${order.technique || 'No definida'}
 
-    Vista previa:
-    ${order.previewImage}
-      `
+Vista previa:
+${order.previewImage || 'No disponible'}
+    `
 
-      const encodedMessage = encodeURIComponent(message)
+    const encodedMessage = encodeURIComponent(message)
+    return `https://wa.me/502${order.phone}?text=${encodedMessage}`
+  }
 
-      return `https://wa.me/502${order.phone}?text=${encodedMessage}`
-    }
+  const handleDownloadOrderPDF = (order) => {
+    const docPDF = new jsPDF()
 
+    docPDF.setFontSize(18)
+    docPDF.text('Pedido personalizado', 20, 20)
 
-  const handleDownloadOrderPDF = async (order) => {
-    const doc = new jsPDF()
+    docPDF.setFontSize(12)
+    docPDF.text(`Cliente: ${order.customerName || 'No definido'}`, 20, 40)
+    docPDF.text(`Teléfono: ${order.phone || 'No definido'}`, 20, 50)
+    docPDF.text(`Prenda: ${order.product || 'No definida'}`, 20, 60)
+    docPDF.text(`Talla: ${order.size || 'No definida'}`, 20, 70)
+    docPDF.text(`Cantidad: ${order.quantity || 0}`, 20, 80)
+    docPDF.text(`Técnica: ${order.technique || 'No definida'}`, 20, 90)
+    docPDF.text(`Estado: ${order.status || 'pendiente_aprobacion'}`, 20, 100)
 
-    doc.setFontSize(18)
-    doc.text('Pedido personalizado', 20, 20)
-
-    doc.setFontSize(12)
-    doc.text(`Cliente: ${order.customerName || 'No definido'}`, 20, 40)
-    doc.text(`Teléfono: ${order.phone || 'No definido'}`, 20, 50)
-    doc.text(`Prenda: ${order.product || 'No definida'}`, 20, 60)
-    doc.text(`Talla: ${order.size || 'No definida'}`, 20, 70)
-    doc.text(`Cantidad: ${order.quantity || 0}`, 20, 80)
-    doc.text(`Técnica: ${order.technique || 'No definida'}`, 20, 90)
-    doc.text(`Estado: ${order.status || 'pendiente_aprobacion'}`, 20, 100)
-
-    doc.text('Recomendación del asistente:', 20, 115)
-    doc.text(getAssistantRecommendation(order), 20, 125, {
-      maxWidth: 170,
+    docPDF.text('Recomendación del asistente:', 20, 115)
+    docPDF.text(getAssistantRecommendation(order), 20, 125, {
+      maxWidth: 170
     })
 
-    try {
-      const imageBase64 = order.previewBase64
-      doc.text('Vista previa:', 20, 145)
+    if (order.previewBase64) {
+      docPDF.text('Vista previa:', 20, 145)
 
-      doc.addImage(
-        imageBase64,
+      docPDF.addImage(
+        order.previewBase64,
         'PNG',
         20,
         155,
         80,
         95
       )
-    } catch (error) {
-      console.error('Error agregando imagen al PDF:', error)
-      doc.text('No se pudo cargar la vista previa.', 20, 155)
+    } else {
+      docPDF.text('Vista previa no disponible para este pedido.', 20, 145)
     }
 
-    doc.save(`pedido-${order.customerName || 'cliente'}.pdf`)
+    docPDF.save(`pedido-${order.customerName || 'cliente'}.pdf`)
   }
 
   return (
     <div className="container mt-4">
       <h2>Historial de pedidos</h2>
 
-      {orders.map((o, index) => (
+      {orders.length === 0 && (
+        <p className="text-muted">No hay pedidos registrados.</p>
+      )}
+
+      {orders.map((o) => (
         <div key={o.id} className="card mb-3 shadow-sm">
           <div className="row g-0">
             <div className="col-md-3 p-2">
@@ -193,51 +202,62 @@ function OrdersHistoryPage() {
 
                 <p className="mb-1">
                   <strong>Estado:</strong>{' '}
-                    <span className="badge bg-warning text-dark">
-                      {o.status || 'pendiente_aprobacion'}
-                    </span>
+                  <span className="badge bg-warning text-dark">
+                    {o.status || 'pendiente_aprobacion'}
+                  </span>
                 </p>
+
                 <div className="mt-3">
                   <label className="form-label">Cambiar estado</label>
                   <select
                     className="form-select"
                     value={o.status || 'pendiente_aprobacion'}
-                    onChange={(e) => handleChangeStatus(o.id, e.target.value)}
+                    onChange={(e) =>
+                      handleChangeStatus(o.id, e.target.value)
+                    }
                   >
-                    <option value="pendiente_aprobacion">Pendiente de aprobación</option>
+                    <option value="pendiente_aprobacion">
+                      Pendiente de aprobación
+                    </option>
                     <option value="aprobado">Aprobado</option>
                     <option value="en_produccion">En producción</option>
                     <option value="terminado">Terminado</option>
                     <option value="entregado">Entregado</option>
+                    <option value="anulado">Anulado</option>
                   </select>
                 </div>
 
+                <div className="mt-3 d-flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-outline-primary"
+                    onClick={() => handleDownloadOrderPDF(o)}
+                  >
+                    Descargar pedido PDF
+                  </button>
 
-                <div className="mt-3">
-                  <button
-                    className="btn btn-warning ms-2"
-                    onClick={() => navigate('/', { state: { orderToEdit: o } })}
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="btn btn-danger ms-2"
-                    onClick={() => handleDeleteOrder(o)}
-                  >
-                    Eliminar
-                  </button>
                   <a
                     href={generateWhatsAppLink(o)}
                     target="_blank"
+                    rel="noreferrer"
                     className="btn btn-success"
                   >
                     Enviar por WhatsApp
                   </a>
+
                   <button
-                    className="btn btn-outline-primary me-2"
-                    onClick={() => handleDownloadOrderPDF(o)}
+                    className="btn btn-warning"
+                    onClick={() =>
+                      navigate('/', { state: { orderToEdit: o } })
+                    }
                   >
-                    Descargar pedido PDF
+                    Editar datos
+                  </button>
+
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => handleDeleteOrder(o)}
+                  >
+                    Eliminar
                   </button>
                 </div>
               </div>
@@ -245,7 +265,6 @@ function OrdersHistoryPage() {
           </div>
         </div>
       ))}
-
     </div>
   )
 }

@@ -1,84 +1,14 @@
-import { db } from '../firebase/config'
-import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore'
-import { storage } from '../firebase/config'
-import { ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage'
-import { useEffect } from 'react'
-import GarmentEditor from '../components/GarmentEditor'
-import { useState } from 'react'
-import jsPDF from 'jspdf'
+import { db, storage } from '../firebase/config'
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore'
+import { ref, uploadString, getDownloadURL } from 'firebase/storage'
+import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import GarmentEditor from '../components/GarmentEditor'
 
 function CreateOrderPage() {
-  const [orders, setOrders] = useState([])
-  const [editingOrder, setEditingOrder] = useState(null)
   const location = useLocation()
 
-  const handleSaveOrder = async (order) => {
-    try {
-
-      let previewImageUrl = order.previewImage
-      let previewPath = order.previewPath
-
-      // Solo subir imagen si es nueva
-      if (!order.previewPath) {
-        previewPath = `orders/${Date.now()}.png`
-        const storageRef = ref(storage, previewPath)
-
-        await uploadString(storageRef, order.previewImage, 'data_url')
-
-        previewImageUrl = await getDownloadURL(storageRef)
-      }
-
-      const newOrder = {
-        ...order,
-        ...form,
-        previewImage: previewImageUrl,
-        previewBase64: order.previewImage,
-        previewPath,
-        status: editingOrder ? editingOrder.status : 'pendiente_aprobacion'
-      }
-
-      if (editingOrder) {
-        const updatedOrder = {
-          ...editingOrder,
-          ...form,
-        }
-
-        await updateDoc(doc(db, "orders", editingOrder.id), updatedOrder)
-
-        setOrders((prev) =>
-          prev.map((item) =>
-            item.id === editingOrder.id
-              ? { ...updatedOrder, id: editingOrder.id }
-              : item
-          )
-        )
-
-        setEditingOrder(null)
-
-        setForm({
-          customerName: '',
-          phone: '',
-          product: '',
-          size: '',
-          quantity: 1,
-          technique: ''
-        })
-
-        return
-      }
-
-      else {
-        // CREATE
-        const docRef = await addDoc(collection(db, "orders"), newOrder)
-
-        setOrders((prev) => [...prev, { ...newOrder, id: docRef.id }])
-      }
-
-    } catch (error) {
-      console.error(error)
-    }
-  }
+  const [editingOrder, setEditingOrder] = useState(null)
 
   const [form, setForm] = useState({
     customerName: '',
@@ -103,12 +33,71 @@ function CreateOrderPage() {
       })
 
       setEditingOrder(order)
+      window.scrollTo(0, 0)
     }
   }, [location.state])
 
+  const resetForm = () => {
+    setForm({
+      customerName: '',
+      phone: '',
+      product: '',
+      size: '',
+      quantity: 1,
+      technique: ''
+    })
+  }
+
+  const handleSaveOrder = async (order) => {
+    try {
+      if (editingOrder) {
+        const updatedOrder = {
+          ...editingOrder,
+          ...form
+        }
+
+        await updateDoc(doc(db, 'orders', editingOrder.id), updatedOrder)
+
+        setEditingOrder(null)
+        resetForm()
+
+        alert('Pedido actualizado correctamente')
+        return
+      }
+
+      const previewPath = `orders/${Date.now()}.png`
+      const storageRef = ref(storage, previewPath)
+
+      await uploadString(storageRef, order.previewImage, 'data_url')
+
+      const previewImageUrl = await getDownloadURL(storageRef)
+
+      const newOrder = {
+        ...order,
+        ...form,
+        previewImage: previewImageUrl,
+        previewBase64: order.previewImage,
+        previewPath,
+        status: 'pendiente_aprobacion',
+        createdAt: new Date().toISOString()
+      }
+
+      await addDoc(collection(db, 'orders'), newOrder)
+
+      resetForm()
+
+      alert('Pedido guardado correctamente')
+    } catch (error) {
+      console.error('Error guardando pedido:', error)
+      alert('Ocurrió un error al guardar el pedido')
+    }
+  }
+
   return (
     <div className="container mt-4">
-      <h2>Crear Pedido Personalizado</h2>
+      <h2>
+        {editingOrder ? 'Editar Pedido' : 'Crear Pedido Personalizado'}
+      </h2>
 
       <div className="card p-3 mb-3">
         <h5>Datos del pedido</h5>
@@ -179,9 +168,10 @@ function CreateOrderPage() {
             <input
               type="number"
               className="form-control"
+              min="1"
               value={form.quantity}
               onChange={(e) =>
-                setForm({ ...form, quantity: e.target.value })
+                setForm({ ...form, quantity: Number(e.target.value) })
               }
             />
           </div>
@@ -204,8 +194,13 @@ function CreateOrderPage() {
         </div>
       </div>
 
-      <GarmentEditor onSave={handleSaveOrder} />
+      {editingOrder && (
+        <div className="alert alert-warning">
+          Estás editando datos del pedido. La imagen del diseño no se modifica en esta versión.
+        </div>
+      )}
 
+      <GarmentEditor onSave={handleSaveOrder} />
     </div>
   )
 }

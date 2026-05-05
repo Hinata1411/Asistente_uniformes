@@ -70,44 +70,50 @@ function OrdersHistoryPage() {
     }
   }
 
-  const handleDeleteOrder = async (order) => {
-    const confirmDelete = window.confirm(
-      '¿Seguro que quieres eliminar este pedido?'
-    )
+  const handleCancelOrder = async (order) => {
+    const reason = window.prompt('Motivo de anulación del pedido:')
 
-    if (!confirmDelete) return
+    if (!reason) return
 
     try {
-      if (order.previewPath) {
-        const imageRef = ref(storage, order.previewPath)
-        await deleteObject(imageRef)
-      }
-
-      await deleteDoc(doc(db, 'orders', order.id))
+      await updateDoc(doc(db, 'orders', order.id), {
+        status: 'anulado',
+        cancelReason: reason,
+        cancelledAt: new Date().toISOString()
+      })
 
       setOrders((prev) =>
-        prev.filter((item) => item.id !== order.id)
+        prev.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                status: 'anulado',
+                cancelReason: reason,
+                cancelledAt: new Date().toISOString()
+              }
+            : item
+        )
       )
     } catch (error) {
-      console.error('Error eliminando pedido:', error)
+      console.error('Error anulando pedido:', error)
     }
   }
 
   const generateWhatsAppLink = (order) => {
     const message = `
-Hola ${order.customerName || ''},
+      Hola ${order.customerName || ''},
 
-Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
+      Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
 
-Detalle:
-Prenda: ${order.product || 'No definida'}
-Talla: ${order.size || 'No definida'}
-Cantidad: ${order.quantity || 0}
-Técnica: ${order.technique || 'No definida'}
+      Detalle:
+      Prenda: ${order.product || 'No definida'}
+      Talla: ${order.size || 'No definida'}
+      Cantidad: ${order.quantity || 0}
+      Técnica: ${order.technique || 'No definida'}
 
-Vista previa:
-${order.previewImage || 'No disponible'}
-    `
+      Vista previa:
+      ${order.previewImage || 'No disponible'}
+          `
 
     const encodedMessage = encodeURIComponent(message)
     return `https://wa.me/502${order.phone}?text=${encodedMessage}`
@@ -255,9 +261,9 @@ ${order.previewImage || 'No disponible'}
 
                   <button
                     className="btn btn-danger"
-                    onClick={() => handleDeleteOrder(o)}
+                    onClick={() => handleCancelOrder(o)}
                   >
-                    Eliminar
+                    Anular
                   </button>
                 </div>
               </div>

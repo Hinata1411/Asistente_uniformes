@@ -9,6 +9,7 @@ import jsPDF from 'jspdf'
 
 function CreateOrderPage() {
   const [orders, setOrders] = useState([])
+  const [editingOrder, setEditingOrder] = useState(null)
 
   
   const loadOrders = async () => {
@@ -31,36 +32,70 @@ function CreateOrderPage() {
     loadOrders()
   }, [])
 
-
   const handleSaveOrder = async (order) => {
     try {
-      // 1. Crear referencia en storage
-      const previewPath = `orders/${Date.now()}.png`
-      const storageRef = ref(storage, previewPath)
 
-      // 2. Subir imagen (base64)
-      await uploadString(storageRef, order.previewImage, 'data_url')
+      let previewImageUrl = order.previewImage
+      let previewPath = order.previewPath
 
-      // 3. Obtener URL pública
-      const downloadURL = await getDownloadURL(storageRef)
+      // Solo subir imagen si es nueva
+      if (!order.previewPath) {
+        previewPath = `orders/${Date.now()}.png`
+        const storageRef = ref(storage, previewPath)
 
-      // 4. Crear nuevo objeto con URL en lugar de base64
-      const newOrder = {
-        ...order,
-        ...form, 
-        previewImage: downloadURL,
-        previewBase64: order.previewImage,
-        previewPath,
-        status: 'pendiente_aprobacion'
+        await uploadString(storageRef, order.previewImage, 'data_url')
+
+        previewImageUrl = await getDownloadURL(storageRef)
       }
 
-      // 5. Guardar en Firestore
-      const docRef = await addDoc(collection(db, "orders"), newOrder)
+      const newOrder = {
+        ...order,
+        ...form,
+        previewImage: previewImageUrl,
+        previewBase64: order.previewImage,
+        previewPath,
+        status: editingOrder ? editingOrder.status : 'pendiente_aprobacion'
+      }
 
-      setOrders((prev) => [...prev, { ...newOrder, id: docRef.id }])
+      if (editingOrder) {
+        const updatedOrder = {
+          ...editingOrder,
+          ...form,
+        }
+
+        await updateDoc(doc(db, "orders", editingOrder.id), updatedOrder)
+
+        setOrders((prev) =>
+          prev.map((item) =>
+            item.id === editingOrder.id
+              ? { ...updatedOrder, id: editingOrder.id }
+              : item
+          )
+        )
+
+        setEditingOrder(null)
+
+        setForm({
+          customerName: '',
+          phone: '',
+          product: '',
+          size: '',
+          quantity: 1,
+          technique: ''
+        })
+
+        return
+      }
+      
+      else {
+        // CREATE
+        const docRef = await addDoc(collection(db, "orders"), newOrder)
+
+        setOrders((prev) => [...prev, { ...newOrder, id: docRef.id }])
+      }
 
     } catch (error) {
-      console.error("Error guardando pedido:", error)
+      console.error(error)
     }
   }
 
@@ -357,7 +392,26 @@ function CreateOrderPage() {
                     <option value="entregado">Entregado</option>
                   </select>
                 </div>
+
+
                 <div className="mt-3">
+                  <button
+                    className="btn btn-warning ms-2"
+                    onClick={() => {
+                      setForm({
+                        customerName: o.customerName,
+                        phone: o.phone,
+                        product: o.product,
+                        size: o.size,
+                        quantity: o.quantity,
+                        technique: o.technique
+                      })
+
+                      setEditingOrder(o)
+                    }}
+                  >
+                    Editar
+                  </button>
                   <button
                     className="btn btn-danger ms-2"
                     onClick={() => handleDeleteOrder(o)}

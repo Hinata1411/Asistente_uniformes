@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { db, storage } from '../firebase/config'
+import { db } from '../firebase/config'
 import {
   collection,
   getDocs,
   doc,
-  updateDoc,
-  deleteDoc
+  updateDoc
 } from 'firebase/firestore'
-import { ref, deleteObject } from 'firebase/storage'
 import jsPDF from 'jspdf'
 
 function OrdersHistoryPage() {
@@ -52,9 +50,7 @@ function OrdersHistoryPage() {
 
   const handleChangeStatus = async (orderId, newStatus) => {
     try {
-      const orderRef = doc(db, 'orders', orderId)
-
-      await updateDoc(orderRef, {
+      await updateDoc(doc(db, 'orders', orderId), {
         status: newStatus
       })
 
@@ -75,11 +71,13 @@ function OrdersHistoryPage() {
 
     if (!reason) return
 
+    const cancelledAt = new Date().toISOString()
+
     try {
       await updateDoc(doc(db, 'orders', order.id), {
         status: 'anulado',
         cancelReason: reason,
-        cancelledAt: new Date().toISOString()
+        cancelledAt
       })
 
       setOrders((prev) =>
@@ -89,7 +87,7 @@ function OrdersHistoryPage() {
                 ...item,
                 status: 'anulado',
                 cancelReason: reason,
-                cancelledAt: new Date().toISOString()
+                cancelledAt
               }
             : item
         )
@@ -101,19 +99,19 @@ function OrdersHistoryPage() {
 
   const generateWhatsAppLink = (order) => {
     const message = `
-      Hola ${order.customerName || ''},
+Hola ${order.customerName || ''},
 
-      Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
+Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
 
-      Detalle:
-      Prenda: ${order.product || 'No definida'}
-      Talla: ${order.size || 'No definida'}
-      Cantidad: ${order.quantity || 0}
-      Técnica: ${order.technique || 'No definida'}
+Detalle:
+Prenda: ${order.product || 'No definida'}
+Talla: ${order.size || 'No definida'}
+Cantidad: ${order.quantity || 0}
+Técnica: ${order.technique || 'No definida'}
 
-      Vista previa:
-      ${order.previewImage || 'No disponible'}
-          `
+Vista previa:
+${order.previewImage || 'No disponible'}
+    `
 
     const encodedMessage = encodeURIComponent(message)
     return `https://wa.me/502${order.phone}?text=${encodedMessage}`
@@ -154,6 +152,12 @@ function OrdersHistoryPage() {
       docPDF.text('Vista previa no disponible para este pedido.', 20, 145)
     }
 
+    if (order.status === 'anulado') {
+      docPDF.text(`Motivo de anulación: ${order.cancelReason || 'No definido'}`, 20, 260, {
+        maxWidth: 170
+      })
+    }
+
     docPDF.save(`pedido-${order.customerName || 'cliente'}.pdf`)
   }
 
@@ -165,112 +169,140 @@ function OrdersHistoryPage() {
         <p className="text-muted">No hay pedidos registrados.</p>
       )}
 
-      {orders.map((o) => (
-        <div key={o.id} className="card mb-3 shadow-sm">
-          <div className="row g-0">
-            <div className="col-md-3 p-2">
-              <img
-                src={o.previewImage}
-                className="img-fluid rounded"
-                alt="Vista previa del pedido"
-              />
-            </div>
+      {orders.map((o) => {
+        const isCancelled = o.status === 'anulado'
 
-            <div className="col-md-9">
-              <div className="card-body">
-                <h5 className="card-title">
-                  {o.product || 'Sin prenda seleccionada'}
-                </h5>
+        return (
+          <div
+            key={o.id}
+            className={`card mb-3 shadow-sm ${
+              isCancelled ? 'border-danger' : ''
+            }`}
+          >
+            <div className="row g-0">
+              <div className="col-md-3 p-2">
+                <img
+                  src={o.previewImage}
+                  className="img-fluid rounded"
+                  alt="Vista previa del pedido"
+                />
+              </div>
 
-                <p className="mb-1">
-                  <strong>Cliente:</strong> {o.customerName || 'No definido'}
-                </p>
+              <div className="col-md-9">
+                <div className="card-body">
+                  <h5 className="card-title">
+                    {o.product || 'Sin prenda seleccionada'}
+                  </h5>
 
-                <p className="mb-1">
-                  <strong>Teléfono:</strong> {o.phone || 'No definido'}
-                </p>
+                  <p className="mb-1">
+                    <strong>Cliente:</strong> {o.customerName || 'No definido'}
+                  </p>
 
-                <p className="mb-1">
-                  <strong>Talla:</strong> {o.size || 'No definida'}
-                </p>
+                  <p className="mb-1">
+                    <strong>Teléfono:</strong> {o.phone || 'No definido'}
+                  </p>
 
-                <p className="mb-1">
-                  <strong>Cantidad:</strong> {o.quantity || 0}
-                </p>
+                  <p className="mb-1">
+                    <strong>Talla:</strong> {o.size || 'No definida'}
+                  </p>
 
-                <p className="mb-1">
-                  <strong>Técnica:</strong> {o.technique || 'No definida'}
-                </p>
+                  <p className="mb-1">
+                    <strong>Cantidad:</strong> {o.quantity || 0}
+                  </p>
 
-                <p className="mb-1">
-                  <strong>Asistente:</strong> {getAssistantRecommendation(o)}
-                </p>
+                  <p className="mb-1">
+                    <strong>Técnica:</strong> {o.technique || 'No definida'}
+                  </p>
 
-                <p className="mb-1">
-                  <strong>Estado:</strong>{' '}
-                  <span className="badge bg-warning text-dark">
-                    {o.status || 'pendiente_aprobacion'}
-                  </span>
-                </p>
+                  <p className="mb-1">
+                    <strong>Asistente:</strong> {getAssistantRecommendation(o)}
+                  </p>
 
-                <div className="mt-3">
-                  <label className="form-label">Cambiar estado</label>
-                  <select
-                    className="form-select"
-                    value={o.status || 'pendiente_aprobacion'}
-                    onChange={(e) =>
-                      handleChangeStatus(o.id, e.target.value)
-                    }
-                  >
-                    <option value="pendiente_aprobacion">
-                      Pendiente de aprobación
-                    </option>
-                    <option value="aprobado">Aprobado</option>
-                    <option value="en_produccion">En producción</option>
-                    <option value="terminado">Terminado</option>
-                    <option value="entregado">Entregado</option>
-                    <option value="anulado">Anulado</option>
-                  </select>
-                </div>
+                  <p className="mb-1">
+                    <strong>Estado:</strong>{' '}
+                    <span
+                      className={`badge ${
+                        isCancelled ? 'bg-danger' : 'bg-warning text-dark'
+                      }`}
+                    >
+                      {o.status || 'pendiente_aprobacion'}
+                    </span>
+                  </p>
 
-                <div className="mt-3 d-flex flex-wrap gap-2">
-                  <button
-                    className="btn btn-outline-primary"
-                    onClick={() => handleDownloadOrderPDF(o)}
-                  >
-                    Descargar pedido PDF
-                  </button>
+                  {isCancelled && (
+                    <p className="mb-1 text-danger">
+                      <strong>Motivo de anulación:</strong>{' '}
+                      {o.cancelReason || 'No definido'}
+                    </p>
+                  )}
 
-                  <a
-                    href={generateWhatsAppLink(o)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-success"
-                  >
-                    Enviar por WhatsApp
-                  </a>
+                  <div className="mt-3">
+                    <label className="form-label">Cambiar estado</label>
+                    <select
+                      className="form-select"
+                      value={o.status || 'pendiente_aprobacion'}
+                      disabled={isCancelled}
+                      onChange={(e) =>
+                        handleChangeStatus(o.id, e.target.value)
+                      }
+                    >
+                      <option value="pendiente_aprobacion">
+                        Pendiente de aprobación
+                      </option>
+                      <option value="aprobado">Aprobado</option>
+                      <option value="en_produccion">En producción</option>
+                      <option value="terminado">Terminado</option>
+                      <option value="entregado">Entregado</option>
+                      <option value="anulado">Anulado</option>
+                    </select>
+                  </div>
 
-                  <button
-                    className="btn btn-warning"
-                    onClick={() =>
-                      navigate('/', { state: { orderToEdit: o } })
-                    }
-                  >
-                    Editar datos
-                  </button>
+                  <div className="mt-3 d-flex flex-wrap gap-2">
+                    <button
+                      className="btn btn-outline-primary"
+                      onClick={() => handleDownloadOrderPDF(o)}
+                    >
+                      Descargar pedido PDF
+                    </button>
 
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => handleCancelOrder(o)}
-                  >
-                    Anular
-                  </button>
+                    <a
+                      href={generateWhatsAppLink(o)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-success"
+                      style={
+                        isCancelled
+                          ? { pointerEvents: 'none', opacity: 0.5 }
+                          : {}
+                      }
+                    >
+                      Enviar por WhatsApp
+                    </a>
+
+                    <button
+                      className="btn btn-warning"
+                      onClick={() =>
+                        navigate('/crearpedido', { state: { orderToEdit: o } })
+                      }
+                      disabled={isCancelled}
+                    >
+                      Editar datos
+                    </button>
+
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => handleCancelOrder(o)}
+                      disabled={isCancelled}
+                    >
+                      Anular
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

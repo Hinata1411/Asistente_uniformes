@@ -105,6 +105,27 @@ function CreateOrderPage() {
     return 'Seleccione una técnica para recibir recomendación.'
   }
 
+  const generateWhatsAppLink = (order) => {
+      const message = `
+    Hola ${order.customerName},
+
+    Tu pedido está en estado: ${order.status}
+
+    Detalle:
+    Prenda: ${order.product}
+    Talla: ${order.size}
+    Cantidad: ${order.quantity}
+    Técnica: ${order.technique}
+
+    Vista previa:
+    ${order.previewImage}
+      `
+
+      const encodedMessage = encodeURIComponent(message)
+
+      return `https://wa.me/502${order.phone}?text=${encodedMessage}`
+    }
+
   return (
     <div className="container mt-4">
       <h2>Crear Pedido Personalizado</h2>
@@ -269,6 +290,15 @@ function CreateOrderPage() {
                     <option value="terminado">Terminado</option>
                     <option value="entregado">Entregado</option>
                   </select>
+                </div>
+                <div className="mt-3">
+                  <a
+                    href={generateWhatsAppLink(o)}
+                    target="_blank"
+                    className="btn btn-success"
+                  >
+                    Enviar por WhatsApp
+                  </a>
                 </div>
               </div>
             </div>

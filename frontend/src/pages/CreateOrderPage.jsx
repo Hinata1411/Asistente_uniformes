@@ -9,6 +9,7 @@ function CreateOrderPage() {
   const location = useLocation()
 
   const [editingOrder, setEditingOrder] = useState(null)
+  const [aiResult, setAiResult] = useState('')
 
   const [form, setForm] = useState({
     customerName: '',
@@ -90,6 +91,29 @@ function CreateOrderPage() {
     } catch (error) {
       console.error('Error guardando pedido:', error)
       alert('Ocurrió un error al guardar el pedido')
+    }
+  }
+
+  const handleGenerateAI = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/ai/recommendation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          product: form.product,
+          technique: form.technique,
+          quantity: form.quantity
+        })
+      })
+
+      const data = await response.json()
+      setAiResult(data.result)
+
+    } catch (error) {
+      console.error(error)
+      alert('Error con IA')
     }
   }
 
@@ -191,12 +215,28 @@ function CreateOrderPage() {
               <option>Sublimación</option>
             </select>
           </div>
+
+          <button
+            className="btn btn-dark mt-3"
+            onClick={handleGenerateAI}
+          >
+            Generar recomendación IA
+          </button>
         </div>
       </div>
 
       {editingOrder && (
         <div className="alert alert-warning">
           Estás editando datos del pedido. La imagen del diseño no se modifica en esta versión.
+        </div>
+      )}
+
+      {aiResult && (
+        <div className="alert alert-info mt-3">
+          <strong>IA:</strong>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>
+            {aiResult}
+          </pre>
         </div>
       )}
 

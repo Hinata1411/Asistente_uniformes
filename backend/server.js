@@ -1,19 +1,19 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import OpenAI from 'openai'
+import Groq from 'groq-sdk'
 
 dotenv.config()
 
 const app = express()
+
 app.use(cors())
 app.use(express.json())
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
 })
 
-// Ruta IA
 app.post('/api/ai/recommendation', async (req, res) => {
   try {
     const { product, technique, quantity } = req.body
@@ -21,35 +21,41 @@ app.post('/api/ai/recommendation', async (req, res) => {
     const prompt = `
 Eres un experto en personalización de uniformes.
 
-Datos del pedido:
-Prenda: ${product}
-Técnica: ${technique}
-Cantidad: ${quantity}
+Datos:
+- Prenda: ${product}
+- Técnica: ${technique}
+- Cantidad: ${quantity}
 
-Responde con:
+Responde:
 1. Recomendación de técnica
 2. Observación de calidad
 3. Sugerencia para el cliente
 4. Nota para producción
     `
 
-    const response = await openai.responses.create({
-      model: "gpt-4.1-mini",
-      input: prompt
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      model: 'llama-3.3-70b-versatile'
     })
 
     res.json({
-      result: response.output[0].content[0].text
+      result: completion.choices[0]?.message?.content
     })
 
   } catch (error) {
-    console.error(error)
-    res.status(500).json({ error: 'Error con IA' })
+    console.error('Error Groq:', error)
+
+    res.status(500).json({
+      error: 'Error con Groq'
+    })
   }
 })
 
-const PORT = 3001
-
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`)
+app.listen(3001, () => {
+  console.log('Servidor corriendo en puerto 3001')
 })

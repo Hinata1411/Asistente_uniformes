@@ -14,13 +14,6 @@ function AppContent() {
   const {user, role } = useAuth()
   const location = useLocation()
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser)
-    })
-
-    return () => unsubscribe()
-  }, [])
 
   const handleLogout = async () => {
     try {

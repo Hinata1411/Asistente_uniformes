@@ -8,6 +8,7 @@ import CreateOrderPage from './pages/CreateOrderPage'
 import OrdersHistoryPage from './pages/OrdersHistoryPage'
 import LoginPage from './pages/LoginPage'
 import PrivateRoute from './components/PrivateRoute'
+import DashboardPage from './pages/DashboardPage'
 
 function AppContent() {
   const {user, role } = useAuth()
@@ -37,6 +38,12 @@ function AppContent() {
             Asistente Uniformes
           </Link>
 
+          {role === 'admin' && (
+            <Link className="nav-link" to="/dashboard">
+              Dashboard
+            </Link>
+          )}
+
           <div className="navbar-nav me-auto">
             <Link className="nav-link" to="/crearpedido">
               Crear pedido
@@ -64,6 +71,15 @@ function AppContent() {
 
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+
+        <Route
+          path="/dashboard"
+          element={
+            <PrivateRoute allowedRoles={['admin']}>
+              <DashboardPage />
+            </PrivateRoute>
+          }
+        />
 
         <Route
           path="/crearpedido"

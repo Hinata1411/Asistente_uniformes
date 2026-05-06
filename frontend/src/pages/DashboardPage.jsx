@@ -32,35 +32,35 @@ function DashboardPage() {
 
       <div className="row mt-3">
         <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm">
+          <div className="card p-3 shadow-sm text-white bg-primary">
             <h6>Total pedidos</h6>
             <h2>{total}</h2>
           </div>
         </div>
 
         <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm">
+          <div className="card p-3 shadow-sm text-white bg-warning">
             <h6>Pendientes</h6>
             <h2>{pendientes}</h2>
           </div>
         </div>
 
         <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm">
+          <div className="card p-3 shadow-sm text-white bg-info">
             <h6>En producción</h6>
             <h2>{produccion}</h2>
           </div>
         </div>
 
         <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm">
+          <div className="card p-3 shadow-sm text-white bg-success">
             <h6>Entregados</h6>
             <h2>{entregados}</h2>
           </div>
         </div>
 
         <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm">
+          <div className="card p-3 shadow-sm text-white bg-danger">
             <h6>Anulados</h6>
             <h2>{anulados}</h2>
           </div>

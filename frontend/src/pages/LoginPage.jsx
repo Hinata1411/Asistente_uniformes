@@ -32,10 +32,10 @@ function LoginPage() {
   }
 
   return (
-    <div className="container mt-5">
+    <div className="container mt-5 d-flex justify-content-center align-items-center" style={{ minHeight: '80vh' }}>
       <div className="row justify-content-center">
         <div className="col-md-4">
-          <div className="card p-4 shadow-sm">
+          <div className="card p-4 shadow-lg border-0">
             <h3 className="text-center mb-3">Iniciar sesión</h3>
 
             <form onSubmit={handleLogin}>

@@ -33,16 +33,10 @@ function AppContent() {
   return (
     <>
       {user && location.pathname !== '/login' && (
-        <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
-          <Link className="navbar-brand" to="/crearpedido">
-            Asistente Uniformes
+        <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4 shadow-sm">
+          <Link className="navbar-brand fw-bold" to="/crearpedido">
+            🎽 Asistente Uniformes
           </Link>
-
-          {role === 'admin' && (
-            <Link className="nav-link" to="/dashboard">
-              Dashboard
-            </Link>
-          )}
 
           <div className="navbar-nav me-auto">
             <Link className="nav-link" to="/crearpedido">
@@ -50,18 +44,24 @@ function AppContent() {
             </Link>
 
             {role === 'admin' && (
-              <Link className="nav-link" to="/historial">
-                Historial
-              </Link>
+              <>
+                <Link className="nav-link" to="/historial">
+                  Historial
+                </Link>
+
+                <Link className="nav-link" to="/dashboard">
+                  Dashboard
+                </Link>
+              </>
             )}
           </div>
 
-          <span className="text-white me-3">
-            Rol: {role || 'sin rol'}
+          <span className="text-white me-3 small">
+            {user?.email}
           </span>
 
           <button
-            className="btn btn-outline-light"
+            className="btn btn-outline-light btn-sm"
             onClick={handleLogout}
           >
             Cerrar sesión

@@ -220,10 +220,10 @@ function OrdersHistoryPage() {
         return (
           <div
             key={o.id}
-            className={`card mb-3 shadow-sm ${
-              isCancelled ? 'border-danger' : ''
+            className={`card mb-3 shadow-sm border-0 ${
+              isCancelled ? 'bg-light border-danger' : ''
             }`}
-          >
+                      >
             <div className="row g-0">
               <div className="col-md-3 p-2">
                 <img
@@ -265,11 +265,12 @@ function OrdersHistoryPage() {
 
                   <p className="mb-1">
                     <strong>Estado:</strong>{' '}
-                    <span
-                      className={`badge ${
-                        isCancelled ? 'bg-danger' : 'bg-warning text-dark'
-                      }`}
-                    >
+                    <span className={`badge ${
+                      o.status === 'anulado' ? 'bg-danger' :
+                      o.status === 'entregado' ? 'bg-success' :
+                      o.status === 'en_produccion' ? 'bg-primary' :
+                      'bg-warning text-dark'
+                    }`}>
                       {o.status || 'pendiente_aprobacion'}
                     </span>
                   </p>
@@ -302,7 +303,7 @@ function OrdersHistoryPage() {
                     </select>
                   </div>
 
-                  <div className="mt-3 d-flex flex-wrap gap-2">
+                  <div className="mt-3 d-flex flex-wrap gap-2 align-items-center">
                     <button
                       className="btn btn-outline-primary"
                       onClick={() => handleDownloadOrderPDF(o)}

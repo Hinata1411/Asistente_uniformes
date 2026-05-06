@@ -19,20 +19,38 @@ app.post('/api/ai/recommendation', async (req, res) => {
     const { product, technique, quantity } = req.body
 
     const prompt = `
-Eres un experto en personalización de uniformes.
+      Eres un asistente inteligente experto en personalización de prendas, uniformes, bordado, DTF y sublimación.
 
-Datos:
-- Prenda: ${product}
-- Técnica: ${technique}
-- Cantidad: ${quantity}
+      Analiza el siguiente pedido:
 
-Responde:
-1. Recomendación de técnica
-2. Observación de calidad
-3. Sugerencia para el cliente
-4. Nota para producción
-    `
+      Prenda: ${product || 'No especificada'}
+      Técnica seleccionada: ${technique || 'No especificada'}
+      Cantidad: ${quantity || 'No especificada'}
 
+      Debes responder en español, con tono profesional y útil para una tienda de uniformes.
+
+      No inventes precios.
+      No apruebes el pedido automáticamente.
+      No digas que viste la imagen si no se envió imagen.
+      No modifiques el diseño original del cliente.
+
+      Responde exactamente con este formato:
+
+      🧵 Recomendación técnica:
+      Explica si la técnica seleccionada es adecuada para la prenda y el tipo de pedido.
+
+      ⚠️ Observaciones de calidad:
+      Menciona posibles riesgos como baja resolución, pérdida de detalle, colores difíciles o problemas en bordado.
+
+      👕 Sugerencia para el cliente:
+      Da una recomendación clara y sencilla para que el cliente pueda aprobar o corregir el diseño.
+
+      🏭 Nota para producción:
+      Indica qué debe revisar el personal antes de producir.
+
+      📌 Resumen final:
+      Resume el pedido en 2 líneas.
+      `
     const completion = await groq.chat.completions.create({
       messages: [
         {

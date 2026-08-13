@@ -12,29 +12,58 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser)
+      try {
+        setLoading(true)
+        setUser(currentUser)
 
-      if (currentUser) {
+        if (!currentUser) {
+          setRole(null)
+          return
+        }
+
+        console.log('UID usuario autenticado:', currentUser.uid)
+
         const userRef = doc(db, 'users', currentUser.uid)
         const userSnap = await getDoc(userRef)
 
         if (userSnap.exists()) {
-          setRole(userSnap.data().role)
+          const userData = userSnap.data()
+
+          console.log('Datos encontrados en Firestore:', userData)
+          console.log('Rol encontrado:', userData.role)
+
+          setRole(userData.role || null)
         } else {
+          console.warn(
+            'No existe documento users con UID:',
+            currentUser.uid
+          )
+
           setRole(null)
         }
-      } else {
-        setRole(null)
-      }
+      } catch (error) {
+        console.error(
+          'Error obteniendo usuario desde Firestore:',
+          error
+        )
 
-      setLoading(false)
+        setRole(null)
+      } finally {
+        setLoading(false)
+      }
     })
 
     return () => unsubscribe()
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, role, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        role,
+        loading
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

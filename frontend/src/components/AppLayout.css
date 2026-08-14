@@ -1,0 +1,312 @@
+.app-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f7fb;
+}
+
+/* =========================
+   SIDEBAR
+========================= */
+
+.app-sidebar {
+  width: 260px;
+  min-width: 260px;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  padding: 24px 18px;
+  background: #111827;
+  color: #f9fafb;
+
+  z-index: 1000;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 4px 8px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-logo {
+  width: 42px;
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 12px;
+  background: #4f46e5;
+  font-size: 21px;
+}
+
+.sidebar-brand h4 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.sidebar-brand span {
+  display: block;
+  margin-top: 2px;
+
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+/* =========================
+   MENÚ
+========================= */
+
+.sidebar-menu {
+  flex: 1;
+  padding-top: 24px;
+}
+
+.sidebar-section-title {
+  margin: 22px 12px 8px;
+
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  margin-bottom: 5px;
+  padding: 11px 12px;
+
+  border-radius: 9px;
+
+  color: #d1d5db;
+  font-size: 14px;
+  font-weight: 500;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.sidebar-link.active {
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+.sidebar-icon {
+  width: 20px;
+  display: inline-flex;
+  justify-content: center;
+
+  font-size: 18px;
+}
+
+/* =========================
+   USUARIO
+========================= */
+
+.sidebar-footer {
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  margin-bottom: 14px;
+}
+
+.user-avatar {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #4f46e5;
+  color: #ffffff;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.user-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-email {
+  max-width: 165px;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  color: #f9fafb;
+  font-size: 12px;
+}
+
+.user-role {
+  margin-top: 2px;
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.sidebar-logout {
+  width: 100%;
+
+  padding: 9px 12px;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+
+  background: transparent;
+  color: #d1d5db;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.sidebar-logout:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+/* =========================
+   CONTENIDO PRINCIPAL
+========================= */
+
+.app-main {
+  width: calc(100% - 260px);
+  min-height: 100vh;
+  margin-left: 260px;
+}
+
+.app-header {
+  height: 70px;
+
+  position: sticky;
+  top: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 32px;
+
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+
+  z-index: 900;
+}
+
+.header-label {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.header-user {
+  padding: 7px 12px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+
+  background: #f9fafb;
+  color: #4b5563;
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-content {
+  width: 100%;
+  padding: 32px;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 900px) {
+  .app-sidebar {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .app-main {
+    width: calc(100% - 220px);
+    margin-left: 220px;
+  }
+
+  .app-content {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-sidebar {
+    position: static;
+    width: 100%;
+    min-width: 100%;
+    height: auto;
+  }
+
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-main {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .sidebar-menu {
+    padding-top: 14px;
+  }
+
+  .sidebar-footer {
+    margin-top: 18px;
+  }
+
+  .app-header {
+    padding: 0 20px;
+  }
+
+  .app-content {
+    padding: 20px;
+  }
+}

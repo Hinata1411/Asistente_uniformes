@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "bootstrap": "^5.3.8",
+    "firebase": "^12.12.1",
+    "jspdf": "^4.2.1",
     "konva": "^10.3.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "react-konva": "^19.2.3"
+    "react-konva": "^19.2.3",
+    "react-router-dom": "^7.14.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

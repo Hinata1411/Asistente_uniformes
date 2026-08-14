@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import GarmentEditor from '../components/GarmentEditor'
 import { inventoryProducts } from '../data/inventoryProducts'
+import './CreateOrderPage.css'
 
 function CreateOrderPage() {
   const location = useLocation()
@@ -272,27 +273,54 @@ function CreateOrderPage() {
   }
 
   return (
-    <div className="container mt-4">
+    <div className="create-order-page">
 
-      <h2>
-        {editingOrder
-          ? 'Editar Pedido'
-          : 'Crear Pedido Personalizado'}
-      </h2>
+      {/* ENCABEZADO */}
+      <div className="order-page-header">
+        <div>
+          <h2 className="page-title">
+            {editingOrder
+              ? 'Editar pedido'
+              : 'Crear pedido personalizado'}
+          </h2>
 
-      <div className="card p-3 mb-3">
+          <p className="page-subtitle">
+            {editingOrder
+              ? 'Actualiza la información y personalización del pedido seleccionado.'
+              : 'Registra los datos del cliente, personaliza la prenda y valida el diseño antes de guardar.'}
+          </p>
+        </div>
 
-        <h5>Datos del pedido</h5>
+        {editingOrder && (
+          <span className="editing-badge">
+            Editando pedido
+          </span>
+        )}
+      </div>
 
-        <div className="row mb-3">
+      {/* PASO 1 */}
+      <section className="order-section">
+        <div className="order-section-header">
+          <span className="section-number">1</span>
 
-          <div className="col-md-6">
+          <div>
+            <h3>Información del cliente</h3>
+            <p>
+              Ingresa los datos de contacto asociados al pedido.
+            </p>
+          </div>
+        </div>
 
-            <label>Nombre del cliente</label>
+        <div className="row g-3">
+          <div className="col-12 col-md-6">
+            <label className="form-label">
+              Nombre del cliente
+            </label>
 
             <input
               type="text"
               className="form-control"
+              placeholder="Ej. Ana López"
               value={form.customerName}
               onChange={(e) =>
                 setForm({
@@ -301,16 +329,17 @@ function CreateOrderPage() {
                 })
               }
             />
-
           </div>
 
-          <div className="col-md-6">
-
-            <label>Teléfono</label>
+          <div className="col-12 col-md-6">
+            <label className="form-label">
+              Teléfono
+            </label>
 
             <input
               type="text"
               className="form-control"
+              placeholder="Ej. 5555 5555"
               value={form.phone}
               onChange={(e) =>
                 setForm({
@@ -319,24 +348,33 @@ function CreateOrderPage() {
                 })
               }
             />
-
           </div>
+        </div>
+      </section>
 
+      {/* PASO 2 */}
+      <section className="order-section">
+        <div className="order-section-header">
+          <span className="section-number">2</span>
+
+          <div>
+            <h3>Configuración del producto</h3>
+            <p>
+              Selecciona la prenda y las características del pedido.
+            </p>
+          </div>
         </div>
 
-        <div className="row">
-
-          <div className="col-md-3">
-
-            <label>
-              Producto del inventario
+        <div className="row g-3">
+          <div className="col-12 col-md-6 col-xl-3">
+            <label className="form-label">
+              Producto
             </label>
 
             <select
-              className="form-control"
+              className="form-select"
               value={form.productId}
               onChange={(e) => {
-
                 setForm({
                   ...form,
                   productId: e.target.value,
@@ -350,36 +388,31 @@ function CreateOrderPage() {
                 setEditorElements([])
               }}
             >
-
               <option value="">
                 Seleccione
               </option>
 
-              {inventoryProducts.map(
-                (product) => (
-                  <option
-                    key={product.id}
-                    value={product.id}
-                  >
-                    {product.name}
-                  </option>
-                )
-              )}
-
+              {inventoryProducts.map((product) => (
+                <option
+                  key={product.id}
+                  value={product.id}
+                >
+                  {product.name}
+                </option>
+              ))}
             </select>
-
           </div>
 
-          <div className="col-md-3">
-
-            <label>Talla</label>
+          <div className="col-12 col-md-6 col-xl-2">
+            <label className="form-label">
+              Talla
+            </label>
 
             <select
-              className="form-control"
+              className="form-select"
               value={form.size}
               disabled={!selectedProduct}
               onChange={(e) => {
-
                 setForm({
                   ...form,
                   size: e.target.value
@@ -388,29 +421,25 @@ function CreateOrderPage() {
                 setAiResult(null)
               }}
             >
-
               <option value="">
                 Seleccione
               </option>
 
-              {selectedProduct?.sizes.map(
-                (size) => (
-                  <option
-                    key={size}
-                    value={size}
-                  >
-                    {size}
-                  </option>
-                )
-              )}
-
+              {selectedProduct?.sizes.map((size) => (
+                <option
+                  key={size}
+                  value={size}
+                >
+                  {size}
+                </option>
+              ))}
             </select>
-
           </div>
 
-          <div className="col-md-3">
-
-            <label>Cantidad</label>
+          <div className="col-12 col-md-6 col-xl-2">
+            <label className="form-label">
+              Cantidad
+            </label>
 
             <input
               type="number"
@@ -419,30 +448,26 @@ function CreateOrderPage() {
               max={selectedProduct?.stock || undefined}
               value={form.quantity}
               onChange={(e) => {
-
                 setForm({
                   ...form,
-                  quantity: Number(
-                    e.target.value
-                  )
+                  quantity: Number(e.target.value)
                 })
 
                 setAiResult(null)
               }}
             />
-
           </div>
 
-          <div className="col-md-3">
-
-            <label>Técnica</label>
+          <div className="col-12 col-md-6 col-xl-3">
+            <label className="form-label">
+              Técnica
+            </label>
 
             <select
-              className="form-control"
+              className="form-select"
               value={form.technique}
               disabled={!selectedProduct}
               onChange={(e) => {
-
                 setForm({
                   ...form,
                   technique: e.target.value
@@ -451,7 +476,6 @@ function CreateOrderPage() {
                 setAiResult(null)
               }}
             >
-
               <option value="">
                 Seleccione
               </option>
@@ -466,324 +490,287 @@ function CreateOrderPage() {
                   </option>
                 )
               )}
-
             </select>
-
           </div>
 
-        </div>
-
-        <div className="row mt-3">
-
-          <div className="col-md-4">
-
-            <label>
-              Parte a personalizar
+          <div className="col-12 col-md-6 col-xl-2">
+            <label className="form-label">
+              Área
             </label>
 
             <select
-              className="form-control"
+              className="form-select"
               value={form.customizationSide}
               disabled={!selectedProduct}
               onChange={(e) => {
-
                 setForm({
                   ...form,
-                  customizationSide:
-                    e.target.value
+                  customizationSide: e.target.value
                 })
 
                 setAiResult(null)
                 setPreviewBase64('')
               }}
             >
-
               <option value="">
                 Seleccione
               </option>
 
-              {selectedProduct?.availableSides.map(
-                (side) => (
-                  <option
-                    key={side}
-                    value={side}
-                  >
-
-                    {side === 'frente'
-                      ? 'Frente'
-                      : side === 'espalda'
-                      ? 'Espalda'
-                      : 'Frente y espalda'}
-
-                  </option>
-                )
-              )}
-
+              {selectedProduct?.availableSides.map((side) => (
+                <option
+                  key={side}
+                  value={side}
+                >
+                  {side === 'frente'
+                    ? 'Frente'
+                    : side === 'espalda'
+                    ? 'Espalda'
+                    : 'Frente y espalda'}
+                </option>
+              ))}
             </select>
-
           </div>
-
         </div>
 
         {selectedProduct && (
-          <div className="alert alert-light border mt-3">
+          <div className="selected-product-summary">
+            <div>
+              <span className="summary-label">
+                Producto seleccionado
+              </span>
 
-            <strong>
-              Producto seleccionado:
-            </strong>{' '}
-            {selectedProduct.name}
+              <strong>
+                {selectedProduct.name}
+              </strong>
+            </div>
 
-            <br />
+            <div>
+              <span className="summary-label">
+                Color
+              </span>
 
-            <strong>Color:</strong>{' '}
-            {selectedProduct.color}
+              <strong>
+                {selectedProduct.color}
+              </strong>
+            </div>
 
-            <br />
+            <div>
+              <span className="summary-label">
+                Stock disponible
+              </span>
 
-            <strong>
-              Stock disponible:
-            </strong>{' '}
-            {selectedProduct.stock}
-
+              <strong>
+                {selectedProduct.stock}
+              </strong>
+            </div>
           </div>
         )}
+      </section>
+
+      {/* PASO 3 */}
+      <section className="order-section">
+        <div className="order-section-header">
+          <span className="section-number">3</span>
+
+          <div>
+            <h3>Personalización de la prenda</h3>
+            <p>
+              Agrega logos, imágenes o texto y ajusta su posición sobre la prenda.
+            </p>
+          </div>
+        </div>
+
+        <GarmentEditor
+          product={selectedProduct}
+          customizationSide={form.customizationSide}
+          onPreviewChange={(base64) =>
+            setPreviewBase64(base64)
+          }
+          onElementsChange={(elements) =>
+            setEditorElements(elements)
+          }
+          onSave={handleSaveOrder}
+        />
+      </section>
+
+      {/* PASO 4 */}
+      <section className="order-section">
+        <div className="order-section-header">
+          <span className="section-number ai-number">
+            ✦
+          </span>
+
+          <div>
+            <h3>Validación inteligente</h3>
+            <p>
+              Analiza la configuración y el diseño antes de registrar el pedido.
+            </p>
+          </div>
+        </div>
 
         <button
-          className="btn btn-dark mt-3"
+          type="button"
+          className="ai-validation-button"
           onClick={handleGenerateAI}
           disabled={loadingAI}
         >
-
           {loadingAI
-            ? 'Validando con IA...'
-            : 'Validar pedido con IA'}
-
+            ? 'Analizando personalización...'
+            : '✦ Validar personalización con IA'}
         </button>
 
-      </div>
+        {aiResult && (
+          <div className="ai-result-card">
+            <div className="ai-result-header">
+              <div>
+                <span className="ai-label">
+                  Resultado del asistente
+                </span>
 
-      {editingOrder && (
-        <div className="alert alert-warning">
-          Estás editando datos del pedido.
-        </div>
-      )}
-
-      {aiResult && (
-
-        <div className="card mt-3 shadow-sm border-0">
-
-          <div className="card-header bg-dark text-white">
-            🧠 Validación IA del pedido
-          </div>
-
-          <div className="card-body text-start">
-
-            <p>
-
-              <strong>
-                Nivel de riesgo:
-              </strong>{' '}
+                <h4>
+                  Validación de la personalización
+                </h4>
+              </div>
 
               <span
-                className={`badge ${
+                className={`risk-badge ${
                   aiResult.riskLevel === 'alto'
-                    ? 'bg-danger'
-                    : aiResult.riskLevel ===
-                      'medio'
-                    ? 'bg-warning text-dark'
-                    : 'bg-success'
+                    ? 'risk-high'
+                    : aiResult.riskLevel === 'medio'
+                    ? 'risk-medium'
+                    : 'risk-low'
                 }`}
               >
-
-                {aiResult.riskLevel ||
-                  'No definido'}
-
+                Riesgo {aiResult.riskLevel || 'no definido'}
               </span>
+            </div>
 
-            </p>
+            <div className="ai-result-grid">
+              <div className="ai-result-item">
+                <span>Compatibilidad técnica</span>
 
-            <p>
-              <strong>
-                Compatibilidad de técnica:
-              </strong>{' '}
-              {aiResult.techniqueCompatibility ||
-                'No especificado'}
-            </p>
+                <strong>
+                  {aiResult.techniqueCompatibility ||
+                    'No especificado'}
+                </strong>
+              </div>
 
-            <p>
-              <strong>
-                Ubicación detectada:
-              </strong>{' '}
-              {aiResult.detectedPlacement ||
-                'No detectada'}
-            </p>
+              <div className="ai-result-item">
+                <span>Ubicación detectada</span>
 
-            <strong>
-              Tamaños recomendados por elemento:
-            </strong>
+                <strong>
+                  {aiResult.detectedPlacement ||
+                    'No detectada'}
+                </strong>
+              </div>
 
-            <ul>
+              <div className="ai-result-item">
+                <span>Proporción visual</span>
 
-              {aiResult.recommendedSizes?.length >
-              0 ? (
+                <strong>
+                  {aiResult.visualFit ||
+                    'No especificada'}
+                </strong>
+              </div>
 
-                aiResult.recommendedSizes.map(
-                  (item, index) => (
+              <div className="ai-result-item">
+                <span>Colores de producción</span>
 
-                    <li key={index}>
+                <strong>
+                  {aiResult.productionColors?.length > 0
+                    ? aiResult.productionColors.join(', ')
+                    : 'No especificados'}
+                </strong>
+              </div>
+            </div>
 
-                      <strong>
-                        {item.element}:
-                      </strong>{' '}
+            <div className="ai-detail-block">
+              <h5>Recomendación general</h5>
 
-                      {item.recommendedSize}
+              <p>
+                {aiResult.recommendation ||
+                  'Sin recomendación'}
+              </p>
+            </div>
 
-                      {item.note
-                        ? ` — ${item.note}`
-                        : ''}
+            <div className="ai-detail-block">
+              <h5>Mensaje para el cliente</h5>
 
-                    </li>
+              <p>
+                {aiResult.clientMessage ||
+                  'Sin mensaje'}
+              </p>
+            </div>
 
-                  )
-                )
+            <div className="ai-detail-block">
+              <h5>Nota para producción</h5>
 
-              ) : (
+              <p>
+                {aiResult.productionNote ||
+                  'Sin nota'}
+              </p>
+            </div>
 
-                <li>No definidos</li>
+            <div className="row g-3">
+              <div className="col-12 col-lg-6">
+                <div className="ai-list-block">
+                  <h5>
+                    Tamaños recomendados
+                  </h5>
 
-              )}
+                  <ul>
+                    {aiResult.recommendedSizes?.length > 0 ? (
+                      aiResult.recommendedSizes.map(
+                        (item, index) => (
+                          <li key={index}>
+                            <strong>
+                              {item.element}
+                            </strong>
 
-            </ul>
+                            {' — '}
 
-            <p>
+                            {item.recommendedSize}
 
-              <strong>
-                Colores a utilizar:
-              </strong>{' '}
+                            {item.note
+                              ? ` · ${item.note}`
+                              : ''}
+                          </li>
+                        )
+                      )
+                    ) : (
+                      <li>No definidos</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
 
-              {aiResult.productionColors?.length >
-              0
-                ? aiResult.productionColors.join(
-                    ', '
-                  )
-                : 'No especificados'}
+              <div className="col-12 col-lg-6">
+                <div className="ai-list-block">
+                  <h5>
+                    Advertencias
+                  </h5>
 
-            </p>
-
-            <p>
-
-              <strong>
-                Proporción visual:
-              </strong>{' '}
-
-              {aiResult.visualFit ||
-                'No especificada'}
-
-            </p>
-
-            <strong>
-              Elementos personalizados detectados:
-            </strong>
-
-            <ul>
-
-              {aiResult.customElementsDetected
-                ?.length > 0 ? (
-
-                aiResult.customElementsDetected.map(
-                  (item, index) => (
-                    <li key={index}>
-                      {item}
-                    </li>
-                  )
-                )
-
-              ) : (
-
-                <li>
-                  Sin elementos detectados
-                </li>
-
-              )}
-
-            </ul>
-
-            <p>
-
-              <strong>
-                Recomendación general:
-              </strong>{' '}
-
-              {aiResult.recommendation ||
-                'Sin recomendación'}
-
-            </p>
-
-            <p>
-
-              <strong>
-                Mensaje para cliente:
-              </strong>{' '}
-
-              {aiResult.clientMessage ||
-                'Sin mensaje'}
-
-            </p>
-
-            <p>
-
-              <strong>
-                Nota para producción:
-              </strong>{' '}
-
-              {aiResult.productionNote ||
-                'Sin nota'}
-
-            </p>
-
-            <strong>Advertencias:</strong>
-
-            <ul>
-
-              {aiResult.warnings?.length > 0 ? (
-
-                aiResult.warnings.map(
-                  (warning, index) => (
-                    <li key={index}>
-                      {warning}
-                    </li>
-                  )
-                )
-
-              ) : (
-
-                <li>
-                  Sin advertencias
-                </li>
-
-              )}
-
-            </ul>
-
+                  <ul>
+                    {aiResult.warnings?.length > 0 ? (
+                      aiResult.warnings.map(
+                        (warning, index) => (
+                          <li key={index}>
+                            {warning}
+                          </li>
+                        )
+                      )
+                    ) : (
+                      <li>
+                        Sin advertencias
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
-
-        </div>
-
-      )}
-
-      <GarmentEditor
-        product={selectedProduct}
-        customizationSide={
-          form.customizationSide
-        }
-        onPreviewChange={(base64) =>
-          setPreviewBase64(base64)
-        }
-        onElementsChange={(elements) =>
-          setEditorElements(elements)
-        }
-        onSave={handleSaveOrder}
-      />
+        )}
+      </section>
 
     </div>
   )

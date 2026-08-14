@@ -1,0 +1,205 @@
+.garment-editor {
+  width: 100%;
+}
+
+.garment-editor > .card-header {
+  display: none;
+}
+
+.garment-editor > .card-body {
+  padding: 0;
+}
+
+/* =========================
+   ALERTAS
+========================= */
+
+.garment-editor .alert {
+  margin-bottom: 0;
+  padding: 16px 18px;
+
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.garment-editor .alert-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.garment-editor .alert-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+/* =========================
+   INFORMACIÓN DEL PRODUCTO
+========================= */
+
+.garment-editor .text-center strong {
+  color: #111827;
+  font-size: 15px;
+}
+
+.garment-editor .text-muted {
+  color: #6b7280 !important;
+}
+
+/* =========================
+   HERRAMIENTAS
+========================= */
+
+.garment-editor .card {
+  margin-top: 18px;
+  padding: 18px !important;
+
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px;
+
+  background: #f8fafc;
+
+  box-shadow: none !important;
+}
+
+.garment-editor .card h6 {
+  margin-bottom: 14px;
+
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.garment-editor .form-label {
+  margin-bottom: 6px;
+
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.garment-editor .form-control {
+  min-height: 42px;
+  border-radius: 8px;
+}
+
+.garment-editor .btn {
+  min-height: 42px;
+
+  border-radius: 8px;
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* =========================
+   EDITOR DE TEXTO / IMAGEN
+========================= */
+
+.garment-editor .form-control-color {
+  width: 100%;
+  min-height: 42px;
+  padding: 5px;
+}
+
+.garment-editor .form-range {
+  margin-top: 6px;
+}
+
+/* =========================
+   CANVAS
+========================= */
+
+.garment-editor .d-flex.gap-4 {
+  margin-top: 24px;
+}
+
+.garment-editor .d-flex.gap-4 > div {
+  padding: 18px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+
+  background: #ffffff;
+}
+
+.garment-editor .d-flex.gap-4 h5 {
+  margin-bottom: 14px;
+
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.garment-editor .konvajs-content {
+  overflow: hidden;
+
+  border: 1px solid #e5e7eb !important;
+  border-radius: 10px;
+
+  background:
+    linear-gradient(45deg, #f8fafc 25%, transparent 25%),
+    linear-gradient(-45deg, #f8fafc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f8fafc 75%),
+    linear-gradient(-45deg, transparent 75%, #f8fafc 75%);
+
+  background-size: 24px 24px;
+  background-position:
+    0 0,
+    0 12px,
+    12px -12px,
+    -12px 0;
+}
+
+/* =========================
+   ACCIONES FINALES
+========================= */
+
+.garment-editor > .card-body > .text-center.mt-4 {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+
+  margin-top: 22px !important;
+}
+
+.garment-editor > .card-body > .text-center.mt-4 .btn {
+  min-width: 150px;
+  padding: 10px 16px;
+}
+
+.garment-editor .btn-success {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.garment-editor .btn-success:hover {
+  background: #15803d;
+  border-color: #15803d;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 1200px) {
+  .garment-editor .konvajs-content {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .garment-editor .d-flex.gap-4 > div {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .garment-editor > .card-body > .text-center.mt-4 {
+    flex-direction: column;
+  }
+
+  .garment-editor > .card-body > .text-center.mt-4 .btn {
+    width: 100%;
+  }
+}

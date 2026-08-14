@@ -6,6 +6,7 @@ import {
   Text
 } from 'react-konva'
 import { useEffect, useRef, useState } from 'react'
+import './GarmentEditor.css'
 
 function useImage(src) {
   const [image, setImage] = useState(null)
@@ -394,7 +395,7 @@ function GarmentEditor({
     })
 
   return (
-    <div className="card shadow-sm mt-4">
+    <div className="garment-editor">
       <div className="card-header text-center">
         Vista previa del uniforme
       </div>

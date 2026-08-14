@@ -21,48 +21,86 @@ function DashboardPage() {
   }, [])
 
   const total = orders.length
-  const pendientes = orders.filter((o) => o.status === 'pendiente_aprobacion').length
-  const produccion = orders.filter((o) => o.status === 'en_produccion').length
-  const entregados = orders.filter((o) => o.status === 'entregado').length
-  const anulados = orders.filter((o) => o.status === 'anulado').length
 
+  const pendientes = orders.filter(
+    (o) => o.status === 'pendiente_aprobacion'
+  ).length
+
+  const aprobados = orders.filter(
+    (o) => o.status === 'aprobado'
+  ).length
+
+  const produccion = orders.filter(
+    (o) => o.status === 'en_produccion'
+  ).length
+
+  const terminados = orders.filter(
+    (o) => o.status === 'terminado'
+  ).length
+
+  const entregados = orders.filter(
+    (o) => o.status === 'entregado'
+  ).length
+
+  const anulados = orders.filter(
+    (o) => o.status === 'anulado'
+  ).length
   return (
-    <div className="container mt-4">
-      <h2>Dashboard</h2>
+    <div>
+      <div className="mb-4">
+        <h2 className="page-title">Dashboard</h2>
+        <p className="page-subtitle">
+          Resumen general del estado de los pedidos registrados.
+        </p>
+      </div>
 
-      <div className="row mt-3">
-        <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm text-white bg-primary">
-            <h6>Total pedidos</h6>
-            <h2>{total}</h2>
+      <div className="row g-3">
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">Total de pedidos</p>
+            <h2 className="mb-0">{total}</h2>
           </div>
         </div>
 
-        <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm text-white bg-warning">
-            <h6>Pendientes</h6>
-            <h2>{pendientes}</h2>
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">Pendientes</p>
+            <h2 className="mb-0">{pendientes}</h2>
           </div>
         </div>
 
-        <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm text-white bg-info">
-            <h6>En producción</h6>
-            <h2>{produccion}</h2>
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">Aprobados</p>
+            <h2 className="mb-0">{aprobados}</h2>
           </div>
         </div>
 
-        <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm text-white bg-success">
-            <h6>Entregados</h6>
-            <h2>{entregados}</h2>
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">En producción</p>
+            <h2 className="mb-0">{produccion}</h2>
           </div>
         </div>
 
-        <div className="col-md-3 mb-3">
-          <div className="card p-3 shadow-sm text-white bg-danger">
-            <h6>Anulados</h6>
-            <h2>{anulados}</h2>
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">Terminados</p>
+            <h2 className="mb-0">{terminados}</h2>
+          </div>
+        </div>
+
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">Entregados</p>
+            <h2 className="mb-0">{entregados}</h2>
+          </div>
+        </div>
+
+        <div className="col-12 col-md-6 col-xl-3">
+          <div className="app-card p-4">
+            <p className="text-muted mb-1">Anulados</p>
+            <h2 className="mb-0">{anulados}</h2>
           </div>
         </div>
       </div>

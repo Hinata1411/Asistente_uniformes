@@ -2,11 +2,17 @@ import { Link, useLocation } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
+import useSessionTimeout from '../hooks/useSessionTimeout'
 import './AppLayout.css'
 
 function AppLayout({ children }) {
   const { user, role } = useAuth()
   const location = useLocation()
+
+  useSessionTimeout({
+    timeoutMinutes: 30,
+    warningMinutes: 15
+  })
 
   const handleLogout = async () => {
     try {

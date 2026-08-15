@@ -157,14 +157,14 @@ function useInventoryProducts() {
         )
 
       const productsData =
-        snapshot.docs.map(
-          normalizeProduct
-        )
-
-      console.log(
-        'INVENTARIO CARGADO:',
-        productsData
-      )
+        snapshot.docs
+          .map(
+            normalizeProduct
+          )
+          .filter(
+            (product) =>
+              product.active !== false
+          )
 
       setInventoryProducts(
         productsData

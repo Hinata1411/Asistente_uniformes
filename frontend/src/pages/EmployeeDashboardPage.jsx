@@ -50,6 +50,15 @@ function EmployeeDashboardPage() {
       order.status === 'terminado'
   )
 
+  const recentOrders = [...orders]
+  .sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0)
+    const dateB = new Date(b.createdAt || 0)
+
+    return dateB - dateA
+  })
+  .slice(0, 5)
+
   if (loading) {
     return (
       <div className="container py-4">
@@ -130,6 +139,75 @@ function EmployeeDashboardPage() {
           <h4 className="mb-3">
             Acciones rápidas
           </h4>
+
+        <div className="card shadow-sm border-0 mt-4">
+          <div className="card-body">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h4 className="mb-1">
+                  Pedidos recientes
+                </h4>
+
+                <p className="text-muted mb-0">
+                  Consulta rápidamente los últimos pedidos registrados.
+                </p>
+              </div>
+
+              <Link
+                to="/historial"
+                className="btn btn-outline-primary btn-sm"
+              >
+                Ver todos
+              </Link>
+            </div>
+
+            {recentOrders.length === 0 ? (
+              <p className="text-muted mb-0">
+                No hay pedidos registrados.
+              </p>
+            ) : (
+              <div className="table-responsive">
+                <table className="table align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Prenda</th>
+                      <th>Técnica</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {recentOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td>
+                          {order.customerName || 'No definido'}
+                        </td>
+
+                        <td>
+                          {order.productName ||
+                            order.product ||
+                            order.productType ||
+                            'No definida'}
+                        </td>
+
+                        <td>
+                          {order.technique || 'No definida'}
+                        </td>
+
+                        <td>
+                          <span className="badge bg-secondary">
+                            {order.status || 'pendiente_aprobacion'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
 
           <div className="d-flex flex-wrap gap-2">
             <Link

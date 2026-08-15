@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import AppLayout from './components/AppLayout'
 import ProductsPage from './pages/ProductsPage'
 import CreateProductPage from './pages/CreateProductPage'
+import EmployeeDashboardPage from './pages/EmployeeDashboardPage'
 
 function ProtectedLayout({ children, allowedRoles }) {
   return (
@@ -35,6 +36,15 @@ function App() {
         />
 
         <Route
+          path="/empleado"
+          element={
+            <ProtectedLayout allowedRoles={['empleado']}>
+              <EmployeeDashboardPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
           path="/crearpedido"
           element={
             <ProtectedLayout allowedRoles={['admin', 'empleado']}>
@@ -46,7 +56,7 @@ function App() {
         <Route
           path="/historial"
           element={
-            <ProtectedLayout allowedRoles={['admin']}>
+            <ProtectedLayout allowedRoles={['admin', 'empleado']}>
               <OrdersHistoryPage />
             </ProtectedLayout>
           }

@@ -162,13 +162,23 @@ function TextElement({ element, isSelected, onSelect, onChange }) {
 
 function GarmentEditor({
   product,
+  customerGarmentImage,
+  customerGarment,
   customizationSide,
   onPreviewChange,
   onElementsChange,
   onSave
 }) {
-  const frontImage = useImage(product?.images?.frente)
-  const backImage = useImage(product?.images?.espalda)
+  const baseFrontImage =
+  product?.images?.frente || customerGarmentImage
+
+  const baseBackImage =
+    product?.images?.espalda || customerGarmentImage
+
+  const frontImage = useImage(baseFrontImage)
+  const backImage = useImage(baseBackImage)
+
+  const hasGarment = Boolean(product || customerGarmentImage)
 
   const stageFrontRef = useRef(null)
   const stageBackRef = useRef(null)
@@ -307,39 +317,44 @@ function GarmentEditor({
   }
 
   const generatePreview = async (clearSelected = false) => {
-  if (clearSelected) {
-    setSelectedId(null)
-    await new Promise((resolve) => setTimeout(resolve, 80))
-  }
-
-    const frontPreview = showFront ? getStagePreview(stageFrontRef) : null
-    const backPreview = showBack ? getStagePreview(stageBackRef) : null
-
-    const preview =
-      customizationSide === 'ambos'
-        ? await mergePreviews(frontPreview, backPreview)
-        : frontPreview || backPreview
-
-    if (preview && onPreviewChange) {
-      onPreviewChange(preview)
+    if (clearSelected) {
+      setSelectedId(null)
+      await new Promise((resolve) => setTimeout(resolve, 80))
     }
 
-    return preview
-  }
+      const frontPreview = showFront ? getStagePreview(stageFrontRef) : null
+      const backPreview = showBack ? getStagePreview(stageBackRef) : null
 
-  useEffect(() => {
-    if (!product || !customizationSide) return
+      const preview =
+        customizationSide === 'ambos'
+          ? await mergePreviews(frontPreview, backPreview)
+          : frontPreview || backPreview
 
-    const timer = setTimeout(() => {
-      generatePreview(false)
-    }, 300)
+      if (preview && onPreviewChange) {
+        onPreviewChange(preview)
+      }
 
-    return () => clearTimeout(timer)
-  }, [product, customizationSide, elements])
+      return preview
+    }
 
-  const handleSave = async () => {
-    if (!product) {
-      alert('Selecciona un producto del inventario')
+    useEffect(() => {
+      if (!hasGarment || !customizationSide) return
+
+      const timer = setTimeout(() => {
+        generatePreview(false)
+      }, 300)
+
+      return () => clearTimeout(timer)
+    }, [
+      product,
+      customerGarmentImage,
+      customizationSide,
+      elements
+    ])
+
+    const handleSave = async () => {
+    if (!hasGarment) {
+      alert('Selecciona un producto o carga una fotografía de la prenda')
       return
     }
 
@@ -358,12 +373,28 @@ function GarmentEditor({
     if (onSave) {
       onSave({
         previewImage: preview,
-        productId: product.id,
-        productName: product.name,
-        productType: product.type,
-        productColor: product.color,
+
+        productId: product?.id || null,
+
+        productName:
+          product?.name ||
+          customerGarment?.type ||
+          'Prenda proporcionada por el cliente',
+
+        productType:
+          product?.type ||
+          customerGarment?.type ||
+          'otro',
+
+        productColor:
+          product?.color ||
+          customerGarment?.color ||
+          '',
+
         customizationSide,
+
         elements,
+
         createdAt: new Date().toISOString()
       })
     }
@@ -401,19 +432,30 @@ function GarmentEditor({
       </div>
 
       <div className="card-body">
-        {!product && (
+        {!hasGarment && (
           <div className="alert alert-info">
-            Selecciona un producto del inventario para mostrar la vista previa.
+            Selecciona un producto del inventario o carga una fotografía
+            de la prenda proporcionada por el cliente.
           </div>
         )}
 
-        {product && (
+        {hasGarment && (
           <>
             <div className="mb-3 text-center">
-              <strong>{product.name}</strong>
+              <strong>
+                {product
+                  ? product.name
+                  : customerGarment?.type || 'Prenda del cliente'}
+              </strong>
+
               <br />
+
               <small className="text-muted">
-                Color: {product.color} | Stock: {product.stock}
+                {product
+                  ? `Color: ${product.color} | Stock: ${product.stock}`
+                  : `Color: ${
+                      customerGarment?.color || 'No especificado'
+                    } | Prenda proporcionada por el cliente`}
               </small>
             </div>
 

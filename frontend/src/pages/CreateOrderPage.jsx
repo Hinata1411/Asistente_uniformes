@@ -9,6 +9,7 @@ import GarmentEditor from '../components/GarmentEditor'
 import CustomerGarmentForm from '../components/orders/CustomerGarmentForm'
 import InventoryGarmentForm from '../components/orders/InventoryGarmentForm'
 import GarmentSourceSelector from '../components/orders/GarmentSourceSelector'
+import CustomerGarmentPreview from '../components/orders/CustomerGarmentPreview'
 
 import { inventoryProducts } from '../data/inventoryProducts'
 
@@ -22,6 +23,7 @@ function CreateOrderPage() {
   const [loadingAI, setLoadingAI] = useState(false)
   const [previewBase64, setPreviewBase64] = useState('')
   const [editorElements, setEditorElements] = useState([])
+  const [customerGarmentImage, setCustomerGarmentImage] = useState('')
 
   const initialForm = {
     garmentSource: 'inventory',
@@ -85,15 +87,21 @@ function CreateOrderPage() {
     setAiResult(null)
     setPreviewBase64('')
     setEditorElements([])
+    setCustomerGarmentImage('')
     setEditingOrder(null)
   }
 
   const handleSaveOrder = async (order) => {
     try {
+      const isInventoryGarment =
+        form.garmentSource === 'inventory'
+
+      const isCustomerGarment =
+        form.garmentSource === 'customer'
+
       if (
         !form.customerName ||
         !form.phone ||
-        !form.productId ||
         !form.size ||
         !form.technique ||
         !form.customizationSide
@@ -102,8 +110,25 @@ function CreateOrderPage() {
         return
       }
 
-      if (!selectedProduct) {
+      if (isInventoryGarment && !form.productId) {
+        alert('Selecciona un producto del inventario')
+        return
+      }
+
+      if (isInventoryGarment && !selectedProduct) {
         alert('Selecciona un producto válido del inventario')
+        return
+      }
+
+      if (
+        isCustomerGarment &&
+        (!form.customerGarmentType ||
+          !form.customerGarmentColor ||
+          !customerGarmentImage)
+      ) {
+        alert(
+          'Completa los datos de la prenda del cliente y carga una fotografía'
+        )
         return
       }
 
@@ -112,7 +137,10 @@ function CreateOrderPage() {
         return
       }
 
-      if (form.quantity > selectedProduct.stock) {
+      if (
+        isInventoryGarment &&
+        form.quantity > selectedProduct.stock
+      ) {
         alert(
           `La cantidad solicitada supera el stock disponible (${selectedProduct.stock})`
         )
@@ -120,7 +148,7 @@ function CreateOrderPage() {
       }
 
       if (!order?.previewImage) {
-        alert('Debes generar una vista previa del uniforme')
+        alert('Debes generar una vista previa de la prenda')
         return
       }
 
@@ -129,38 +157,76 @@ function CreateOrderPage() {
         return
       }
 
-      const orderElements = order.elements || editorElements || []
+      const orderElements =
+        order.elements || editorElements || []
+
+      const garmentData = {
+        garmentSource: form.garmentSource,
+
+        productId: isInventoryGarment
+          ? selectedProduct.id
+          : null,
+
+        productName: isInventoryGarment
+          ? selectedProduct.name
+          : form.customerGarmentDescription ||
+            form.customerGarmentType,
+
+        productType: isInventoryGarment
+          ? selectedProduct.type
+          : form.customerGarmentType,
+
+        productColor: isInventoryGarment
+          ? selectedProduct.color
+          : form.customerGarmentColor,
+
+        customerGarment: isCustomerGarment
+          ? {
+              type: form.customerGarmentType,
+              description:
+                form.customerGarmentDescription,
+              color:
+                form.customerGarmentColor
+            }
+          : null
+      }
 
       if (editingOrder) {
-        await updateDoc(doc(db, 'orders', editingOrder.id), {
-          customerName: form.customerName,
-          phone: form.phone,
+        await updateDoc(
+          doc(db, 'orders', editingOrder.id),
+          {
+            customerName: form.customerName,
+            phone: form.phone,
 
-          productId: selectedProduct.id,
-          productName: selectedProduct.name,
-          productType: selectedProduct.type,
-          productColor: selectedProduct.color,
+            ...garmentData,
 
-          size: form.size,
-          quantity: form.quantity,
-          technique: form.technique,
-          customizationSide: form.customizationSide,
+            size: form.size,
+            quantity: form.quantity,
+            technique: form.technique,
+            customizationSide:
+              form.customizationSide,
 
-          elements: orderElements,
+            elements: orderElements,
 
-          aiValidation: aiResult,
-          aiValidatedAt: new Date().toISOString(),
+            aiValidation: aiResult,
+            aiValidatedAt:
+              new Date().toISOString(),
 
-          updatedAt: new Date().toISOString()
-        })
+            updatedAt:
+              new Date().toISOString()
+          }
+        )
 
         alert('Pedido actualizado correctamente')
         resetForm()
         return
       }
 
-      const previewPath = `orders/${Date.now()}.png`
-      const storageRef = ref(storage, previewPath)
+      const previewPath =
+        `orders/${Date.now()}.png`
+
+      const storageRef =
+        ref(storage, previewPath)
 
       await uploadString(
         storageRef,
@@ -168,41 +234,51 @@ function CreateOrderPage() {
         'data_url'
       )
 
-      const previewImageUrl = await getDownloadURL(storageRef)
+      const previewImageUrl =
+        await getDownloadURL(storageRef)
 
       const newOrder = {
         customerName: form.customerName,
         phone: form.phone,
 
-        productId: selectedProduct.id,
-        productName: selectedProduct.name,
-        productType: selectedProduct.type,
-        productColor: selectedProduct.color,
+        ...garmentData,
 
         size: form.size,
         quantity: form.quantity,
         technique: form.technique,
-        customizationSide: form.customizationSide,
+        customizationSide:
+          form.customizationSide,
 
         elements: orderElements,
 
-        previewImage: previewImageUrl,
+        previewImage:
+          previewImageUrl,
+
         previewPath,
 
         aiValidation: aiResult,
-        aiValidatedAt: new Date().toISOString(),
+        aiValidatedAt:
+          new Date().toISOString(),
 
-        status: 'pendiente_aprobacion',
+        status:
+          'pendiente_aprobacion',
 
-        createdAt: new Date().toISOString()
+        createdAt:
+          new Date().toISOString()
       }
 
-      await addDoc(collection(db, 'orders'), newOrder)
+      await addDoc(
+        collection(db, 'orders'),
+        newOrder
+      )
 
       alert('Pedido guardado correctamente')
       resetForm()
     } catch (error) {
-      console.error('Error guardando pedido:', error)
+      console.error(
+        'Error guardando pedido:',
+        error
+      )
 
       alert(
         `Ocurrió un error al guardar el pedido: ${error.message}`
@@ -212,25 +288,50 @@ function CreateOrderPage() {
 
   const handleGenerateAI = async () => {
     try {
+      const isInventoryGarment =
+        form.garmentSource === 'inventory'
+
+      const isCustomerGarment =
+        form.garmentSource === 'customer'
+
       if (
-        !selectedProduct ||
         !form.size ||
         !form.technique ||
         !form.quantity ||
         !form.customizationSide
       ) {
         alert(
-          'Selecciona producto, talla, técnica, cantidad y lado de personalización'
+          'Completa talla, técnica, cantidad y área de personalización'
         )
         return
       }
 
+      if (isInventoryGarment && !selectedProduct) {
+        alert('Selecciona un producto válido del inventario')
+        return
+      }
+
+      if (
+        isCustomerGarment &&
+        (!form.customerGarmentType ||
+          !form.customerGarmentColor ||
+          !customerGarmentImage)
+      ) {
+        alert(
+          'Completa los datos de la prenda del cliente y carga una fotografía'
+        )
+        return
+      }
+      
       if (form.quantity <= 0) {
         alert('La cantidad debe ser mayor a 0')
         return
       }
 
-      if (form.quantity > selectedProduct.stock) {
+      if (
+        isInventoryGarment &&
+        form.quantity > selectedProduct.stock
+      ) {
         alert(
           `Solo hay ${selectedProduct.stock} unidades disponibles`
         )
@@ -250,13 +351,30 @@ function CreateOrderPage() {
           },
 
           body: JSON.stringify({
-            product: selectedProduct.name,
-            productType: selectedProduct.type,
-            productColor: selectedProduct.color,
+            garmentSource: form.garmentSource,
+
+            product: isInventoryGarment
+              ? selectedProduct.name
+              : form.customerGarmentDescription ||
+                form.customerGarmentType,
+
+            productType: isInventoryGarment
+              ? selectedProduct.type
+              : form.customerGarmentType,
+
+            productColor: isInventoryGarment
+              ? selectedProduct.color
+              : form.customerGarmentColor,
+
             size: form.size,
             technique: form.technique,
             quantity: form.quantity,
             customizationSide: form.customizationSide,
+
+            customerGarmentDescription: isCustomerGarment
+              ? form.customerGarmentDescription
+              : '',
+
             previewImage: previewBase64,
             elements: editorElements
           })
@@ -434,15 +552,37 @@ function CreateOrderPage() {
           </div>
         </div>
 
+        {form.garmentSource === 'customer' && (
+          <CustomerGarmentPreview
+            form={form}
+            onImageChange={(image) => {
+              setCustomerGarmentImage(image)
+              setPreviewBase64('')
+              setAiResult(null)
+            }}
+          />
+        )}
+
         <GarmentEditor
           product={selectedProduct}
+
+          customerGarmentImage={customerGarmentImage}
+
+          customerGarment={{
+            type: form.customerGarmentType,
+            color: form.customerGarmentColor
+          }}
+
           customizationSide={form.customizationSide}
+
           onPreviewChange={(base64) =>
             setPreviewBase64(base64)
           }
+
           onElementsChange={(elements) =>
             setEditorElements(elements)
           }
+
           onSave={handleSaveOrder}
         />
       </section>

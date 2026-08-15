@@ -8,7 +8,7 @@ import {
   collection,
   addDoc,
   doc,
-  updateDoc
+  runTransaction
 } from 'firebase/firestore'
 
 import {
@@ -37,7 +37,8 @@ function CreateOrderPage() {
   const {
     inventoryProducts,
     loadingProducts,
-    productsError
+    productsError,
+    reloadProducts
   } = useInventoryProducts()
 
   const initialForm = {
@@ -125,248 +126,594 @@ function CreateOrderPage() {
   }
 
   const handleSaveOrder = async (order) => {
-    try {
-      const isInventoryGarment =
-        form.garmentSource === 'inventory'
+  try {
+    const isInventoryGarment =
+      form.garmentSource === 'inventory'
 
-      const isCustomerGarment =
-        form.garmentSource === 'customer'
+    const isCustomerGarment =
+      form.garmentSource === 'customer'
 
-      if (
-        !form.customerName ||
-        !form.phone ||
-        !form.size ||
-        !form.technique ||
-        !form.customizationSide
-      ) {
-        alert(
-          'Completa todos los datos del pedido'
-        )
-        return
-      }
+    const requestedQuantity =
+      Number(form.quantity)
 
-      if (
-        isInventoryGarment &&
-        !form.productId
-      ) {
-        alert(
-          'Selecciona un producto del inventario'
-        )
-        return
-      }
+    // =========================================
+    // VALIDACIONES GENERALES
+    // =========================================
 
-      if (
-        isInventoryGarment &&
-        !selectedProduct
-      ) {
-        alert(
-          'Selecciona un producto válido del inventario'
-        )
-        return
-      }
+    if (
+      !form.customerName ||
+      !form.phone ||
+      !form.size ||
+      !form.technique ||
+      !form.customizationSide
+    ) {
+      alert(
+        'Completa todos los datos del pedido'
+      )
+      return
+    }
 
-      if (
-        isCustomerGarment &&
-        (
-          !form.customerGarmentType ||
-          !form.customerGarmentColor ||
-          !customerGarmentImage
-        )
-      ) {
-        alert(
-          'Completa los datos de la prenda del cliente y carga una fotografía'
-        )
-        return
-      }
+    if (
+      isInventoryGarment &&
+      !form.productId
+    ) {
+      alert(
+        'Selecciona un producto del inventario'
+      )
+      return
+    }
 
-      if (form.quantity <= 0) {
-        alert(
-          'La cantidad debe ser mayor a 0'
-        )
-        return
-      }
+    if (
+      isInventoryGarment &&
+      !selectedProduct
+    ) {
+      alert(
+        'Selecciona un producto válido del inventario'
+      )
+      return
+    }
 
-      if (
-        isInventoryGarment &&
-        form.quantity > selectedProduct.stock
-      ) {
+    if (
+      isCustomerGarment &&
+      (
+        !form.customerGarmentType ||
+        !form.customerGarmentColor ||
+        !customerGarmentImage
+      )
+    ) {
+      alert(
+        'Completa los datos de la prenda del cliente y carga una fotografía'
+      )
+      return
+    }
+
+    if (
+      !requestedQuantity ||
+      requestedQuantity <= 0
+    ) {
+      alert(
+        'La cantidad debe ser mayor a 0'
+      )
+      return
+    }
+
+    if (
+      isInventoryGarment &&
+      requestedQuantity >
+        Number(selectedProduct.stock || 0)
+    ) {
+      /*
+        Esta validación es útil como aviso rápido.
+
+        La transacción volverá a comprobar el stock
+        real antes de guardar.
+      */
+      if (!editingOrder) {
         alert(
           `La cantidad solicitada supera el stock disponible (${selectedProduct.stock})`
         )
         return
       }
+    }
 
-      if (!order?.previewImage) {
-        alert(
-          'Debes generar una vista previa de la prenda'
+    if (!order?.previewImage) {
+      alert(
+        'Debes generar una vista previa de la prenda'
+      )
+      return
+    }
+
+    if (!aiResult) {
+      alert(
+        'Debes validar el pedido con IA antes de guardarlo'
+      )
+      return
+    }
+
+    const orderElements =
+      order.elements ||
+      editorElements ||
+      []
+
+    // =========================================
+    // DATOS DE LA PRENDA
+    // =========================================
+
+    const garmentData = {
+      garmentSource:
+        form.garmentSource,
+
+      productId:
+        isInventoryGarment
+          ? selectedProduct.id
+          : null,
+
+      productName:
+        isInventoryGarment
+          ? selectedProduct.name
+          : form.customerGarmentDescription ||
+            form.customerGarmentType,
+
+      productType:
+        isInventoryGarment
+          ? selectedProduct.type
+          : form.customerGarmentType,
+
+      productColor:
+        isInventoryGarment
+          ? selectedProduct.color
+          : form.customerGarmentColor,
+
+      customerGarment:
+        isCustomerGarment
+          ? {
+              type:
+                form.customerGarmentType,
+
+              description:
+                form.customerGarmentDescription,
+
+              color:
+                form.customerGarmentColor
+            }
+          : null
+    }
+
+    // =========================================
+    // EDITAR PEDIDO EXISTENTE
+    // =========================================
+
+    if (editingOrder) {
+      const oldProductId =
+        editingOrder.productId || null
+
+      const oldQuantity =
+        Number(
+          editingOrder.quantity || 0
         )
-        return
-      }
 
-      if (!aiResult) {
-        alert(
-          'Debes validar el pedido con IA antes de guardarlo'
+      /*
+        También soportamos pedidos antiguos que
+        todavía no tenían garmentSource pero sí
+        tenían productId.
+      */
+      const oldIsInventory =
+        Boolean(oldProductId) &&
+        (
+          editingOrder.garmentSource ===
+            'inventory' ||
+          !editingOrder.garmentSource
         )
-        return
-      }
 
-      const orderElements =
-        order.elements ||
-        editorElements ||
-        []
+      const newProductId =
+        isInventoryGarment
+          ? selectedProduct.id
+          : null
 
-      const garmentData = {
-        garmentSource:
-          form.garmentSource,
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const orderRef =
+            doc(
+              db,
+              'orders',
+              editingOrder.id
+            )
 
-        productId:
-          isInventoryGarment
-            ? selectedProduct.id
-            : null,
+          const oldProductRef =
+            oldIsInventory
+              ? doc(
+                  db,
+                  'products',
+                  oldProductId
+                )
+              : null
 
-        productName:
-          isInventoryGarment
-            ? selectedProduct.name
-            : form.customerGarmentDescription ||
-              form.customerGarmentType,
+          const newProductRef =
+            isInventoryGarment
+              ? doc(
+                  db,
+                  'products',
+                  newProductId
+                )
+              : null
 
-        productType:
-          isInventoryGarment
-            ? selectedProduct.type
-            : form.customerGarmentType,
+          let oldProductSnap = null
+          let newProductSnap = null
 
-        productColor:
-          isInventoryGarment
-            ? selectedProduct.color
-            : form.customerGarmentColor,
+          // =====================================
+          // LEER PRODUCTOS ANTES DE ESCRIBIR
+          // =====================================
 
-        customerGarment:
-          isCustomerGarment
-            ? {
-                type:
-                  form.customerGarmentType,
+          if (
+            oldProductRef &&
+            newProductRef &&
+            oldProductId === newProductId
+          ) {
+            oldProductSnap =
+              await transaction.get(
+                oldProductRef
+              )
 
-                description:
-                  form.customerGarmentDescription,
+            newProductSnap =
+              oldProductSnap
+          } else {
+            if (oldProductRef) {
+              oldProductSnap =
+                await transaction.get(
+                  oldProductRef
+                )
+            }
 
-                color:
-                  form.customerGarmentColor
-              }
-            : null
-      }
-
-      if (editingOrder) {
-        await updateDoc(
-          doc(
-            db,
-            'orders',
-            editingOrder.id
-          ),
-          {
-            customerName:
-              form.customerName,
-
-            phone:
-              form.phone,
-
-            ...garmentData,
-
-            size:
-              form.size,
-
-            quantity:
-              form.quantity,
-
-            technique:
-              form.technique,
-
-            customizationSide:
-              form.customizationSide,
-
-            elements:
-              orderElements,
-
-            aiValidation:
-              aiResult,
-
-            aiValidatedAt:
-              new Date().toISOString(),
-
-            updatedAt:
-              new Date().toISOString()
+            if (newProductRef) {
+              newProductSnap =
+                await transaction.get(
+                  newProductRef
+                )
+            }
           }
-        )
 
-        alert(
-          'Pedido actualizado correctamente'
-        )
+          // =====================================
+          // MISMO PRODUCTO DE INVENTARIO
+          // =====================================
 
-        resetForm()
-        return
-      }
+          if (
+            oldIsInventory &&
+            isInventoryGarment &&
+            oldProductId === newProductId
+          ) {
+            if (!newProductSnap?.exists()) {
+              throw new Error(
+                'El producto del inventario ya no existe.'
+              )
+            }
 
-      const previewPath =
-        `orders/${Date.now()}.png`
+            const currentStock =
+              Number(
+                newProductSnap.data()
+                  .stock || 0
+              )
 
-      const storageRef =
-        ref(
-          storage,
-          previewPath
-        )
+            /*
+              Si antes pedía 2 y ahora pide 4:
+              necesitamos descontar únicamente 2.
 
-      await uploadString(
-        storageRef,
-        order.previewImage,
-        'data_url'
+              Si antes pedía 4 y ahora pide 2:
+              devolvemos 2 al inventario.
+            */
+            const difference =
+              requestedQuantity -
+              oldQuantity
+
+            if (
+              difference > 0 &&
+              difference > currentStock
+            ) {
+              throw new Error(
+                `Stock insuficiente. Solo hay ${currentStock} unidades adicionales disponibles.`
+              )
+            }
+
+            const newStock =
+              currentStock -
+              difference
+
+            if (newStock < 0) {
+              throw new Error(
+                'El stock no puede quedar negativo.'
+              )
+            }
+
+            transaction.update(
+              newProductRef,
+              {
+                stock: newStock
+              }
+            )
+          }
+
+          // =====================================
+          // CAMBIÓ DE PRODUCTO O DE ORIGEN
+          // =====================================
+
+          else {
+            /*
+              Si el pedido anterior utilizaba
+              inventario, devolvemos su cantidad.
+            */
+            if (
+              oldIsInventory &&
+              oldProductRef
+            ) {
+              if (
+                !oldProductSnap?.exists()
+              ) {
+                throw new Error(
+                  'El producto anterior ya no existe en inventario.'
+                )
+              }
+
+              const oldCurrentStock =
+                Number(
+                  oldProductSnap.data()
+                    .stock || 0
+                )
+
+              transaction.update(
+                oldProductRef,
+                {
+                  stock:
+                    oldCurrentStock +
+                    oldQuantity
+                }
+              )
+            }
+
+            /*
+              Si el pedido nuevo utiliza inventario,
+              descontamos la nueva cantidad.
+            */
+            if (
+              isInventoryGarment &&
+              newProductRef
+            ) {
+              if (
+                !newProductSnap?.exists()
+              ) {
+                throw new Error(
+                  'El producto seleccionado no existe en inventario.'
+                )
+              }
+
+              const newCurrentStock =
+                Number(
+                  newProductSnap.data()
+                    .stock || 0
+                )
+
+              if (
+                requestedQuantity >
+                newCurrentStock
+              ) {
+                throw new Error(
+                  `Stock insuficiente. Solo hay ${newCurrentStock} unidades disponibles.`
+                )
+              }
+
+              transaction.update(
+                newProductRef,
+                {
+                  stock:
+                    newCurrentStock -
+                    requestedQuantity
+                }
+              )
+            }
+          }
+
+          // =====================================
+          // ACTUALIZAR PEDIDO
+          // =====================================
+
+          transaction.update(
+            orderRef,
+            {
+              customerName:
+                form.customerName,
+
+              phone:
+                form.phone,
+
+              ...garmentData,
+
+              size:
+                form.size,
+
+              quantity:
+                requestedQuantity,
+
+              technique:
+                form.technique,
+
+              customizationSide:
+                form.customizationSide,
+
+              elements:
+                orderElements,
+
+              aiValidation:
+                aiResult,
+
+              aiValidatedAt:
+                new Date().toISOString(),
+
+              updatedAt:
+                new Date().toISOString()
+            }
+          )
+        }
       )
 
-      const previewImageUrl =
-        await getDownloadURL(
-          storageRef
-        )
+      await reloadProducts()
 
-      const newOrder = {
-        customerName:
-          form.customerName,
+      alert(
+        'Pedido actualizado correctamente'
+      )
 
-        phone:
-          form.phone,
+      resetForm()
+      return
+    }
 
-        ...garmentData,
+    // =========================================
+    // SUBIR VISTA PREVIA
+    // =========================================
 
-        size:
-          form.size,
+    const previewPath =
+      `orders/${Date.now()}.png`
 
-        quantity:
-          form.quantity,
+    const storageRef =
+      ref(
+        storage,
+        previewPath
+      )
 
-        technique:
-          form.technique,
+    await uploadString(
+      storageRef,
+      order.previewImage,
+      'data_url'
+    )
 
-        customizationSide:
-          form.customizationSide,
+    const previewImageUrl =
+      await getDownloadURL(
+        storageRef
+      )
 
-        elements:
-          orderElements,
+    // =========================================
+    // NUEVO PEDIDO
+    // =========================================
 
-        previewImage:
-          previewImageUrl,
+    const newOrder = {
+      customerName:
+        form.customerName,
 
-        previewPath,
+      phone:
+        form.phone,
 
-        aiValidation:
-          aiResult,
+      ...garmentData,
 
-        aiValidatedAt:
-          new Date().toISOString(),
+      size:
+        form.size,
 
-        status:
-          'pendiente_aprobacion',
+      quantity:
+        requestedQuantity,
 
-        createdAt:
-          new Date().toISOString()
-      }
+      technique:
+        form.technique,
 
+      customizationSide:
+        form.customizationSide,
+
+      elements:
+        orderElements,
+
+      previewImage:
+        previewImageUrl,
+
+      previewPath,
+
+      aiValidation:
+        aiResult,
+
+      aiValidatedAt:
+        new Date().toISOString(),
+
+      status:
+        'pendiente_aprobacion',
+
+      createdAt:
+        new Date().toISOString()
+    }
+
+    // =========================================
+    // PEDIDO CON PRENDA DE INVENTARIO
+    // =========================================
+
+    if (isInventoryGarment) {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const productRef =
+            doc(
+              db,
+              'products',
+              selectedProduct.id
+            )
+
+          const productSnap =
+            await transaction.get(
+              productRef
+            )
+
+          if (!productSnap.exists()) {
+            throw new Error(
+              'El producto seleccionado ya no existe.'
+            )
+          }
+
+          const currentStock =
+            Number(
+              productSnap.data()
+                .stock || 0
+            )
+
+          if (
+            requestedQuantity >
+            currentStock
+          ) {
+            throw new Error(
+              `Stock insuficiente. Solo hay ${currentStock} unidades disponibles.`
+            )
+          }
+
+          const newStock =
+            currentStock -
+            requestedQuantity
+
+          if (newStock < 0) {
+            throw new Error(
+              'El stock no puede quedar negativo.'
+            )
+          }
+
+          const newOrderRef =
+            doc(
+              collection(
+                db,
+                'orders'
+              )
+            )
+
+          transaction.update(
+            productRef,
+            {
+              stock:
+                newStock
+            }
+          )
+
+          transaction.set(
+            newOrderRef,
+            newOrder
+          )
+        }
+      )
+    }
+
+    // =========================================
+    // PRENDA PROPORCIONADA POR EL CLIENTE
+    // =========================================
+
+    else {
       await addDoc(
         collection(
           db,
@@ -374,24 +721,26 @@ function CreateOrderPage() {
         ),
         newOrder
       )
-
-      alert(
-        'Pedido guardado correctamente'
-      )
-
-      resetForm()
-    } catch (error) {
-      console.error(
-        'Error guardando pedido:',
-        error
-      )
-
-      alert(
-        `Ocurrió un error al guardar el pedido: ${error.message}`
-      )
     }
-  }
 
+    await reloadProducts()
+
+    alert(
+      'Pedido guardado correctamente'
+    )
+
+    resetForm()
+  } catch (error) {
+    console.error(
+      'Error guardando pedido:',
+      error
+    )
+
+    alert(
+      `Ocurrió un error al guardar el pedido: ${error.message}`
+    )
+  }
+}
   const handleGenerateAI = async () => {
     try {
       const isInventoryGarment =

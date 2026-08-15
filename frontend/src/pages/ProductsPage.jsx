@@ -1,8 +1,42 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { inventoryProducts } from '../data/inventoryProducts'
+import { collection, getDocs } from 'firebase/firestore'
+
+import { db } from '../firebase/config'
 import './ProductsPage.css'
 
 function ProductsPage() {
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const snapshot = await getDocs(
+          collection(db, 'products')
+        )
+
+        const productsData = snapshot.docs.map(
+          (document) => ({
+            id: document.id,
+            ...document.data()
+          })
+        )
+
+        setProducts(productsData)
+      } catch (error) {
+        console.error(
+          'Error cargando productos:',
+          error
+        )
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadProducts()
+  }, [])
+  
   return (
     <div className="products-page">
 
@@ -26,8 +60,14 @@ function ProductsPage() {
         </Link>
       </div>
 
+      {loading && (
+        <div className="text-muted mb-3">
+          Cargando productos...
+        </div>
+      )}
+
       <div className="products-grid">
-        {inventoryProducts.map((product) => (
+        {products.map((product) => (
           <article
             key={product.id}
             className="product-card"
@@ -142,7 +182,7 @@ function ProductsPage() {
         ))}
       </div>
 
-      {inventoryProducts.length === 0 && (
+      {!loading && products.length === 0 && (
         <div className="empty-products">
           No hay productos registrados.
         </div>

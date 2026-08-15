@@ -7,7 +7,10 @@ import {
   collection,
   getDocs,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc,
+  query,
+  where
 } from 'firebase/firestore'
 
 import { db } from '../firebase/config'
@@ -89,6 +92,92 @@ function ProductsPage() {
     }
   }
 
+  const handleToggleActive = async (product) => {
+    const newActiveStatus = product.active === false
+
+    try {
+      await updateDoc(
+        doc(db, 'products', product.id),
+        {
+          active: newActiveStatus
+        }
+      )
+
+      setProducts((prev) =>
+        prev.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                active: newActiveStatus
+              }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error(
+        'Error actualizando estado del producto:',
+        error
+      )
+
+      alert(
+        'No se pudo actualizar el estado del producto'
+      )
+    }
+  }
+
+  const handleDeleteProduct = async (product) => {
+    const confirmed = window.confirm(
+      `¿Deseas eliminar definitivamente "${product.name}"?`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const ordersQuery = query(
+        collection(db, 'orders'),
+        where('productId', '==', product.id)
+      )
+
+      const ordersSnapshot = await getDocs(
+        ordersQuery
+      )
+
+      if (!ordersSnapshot.empty) {
+        alert(
+          'Este producto ya está asociado a uno o más pedidos. No puede eliminarse definitivamente; puedes desactivarlo.'
+        )
+
+        return
+      }
+
+      await deleteDoc(
+        doc(db, 'products', product.id)
+      )
+
+      setProducts((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== product.id
+        )
+      )
+
+      alert(
+        'Producto eliminado definitivamente'
+      )
+    } catch (error) {
+      console.error(
+        'Error eliminando producto:',
+        error
+      )
+
+      alert(
+        'No se pudo eliminar el producto'
+      )
+    }
+  }
+
   return (
     <div className="products-page">
 
@@ -144,6 +233,17 @@ function ProductsPage() {
                   <h3>
                     {product.name}
                   </h3>
+                  <span
+                    className={`badge ${
+                      product.active === false
+                        ? 'bg-secondary'
+                        : 'bg-success'
+                    }`}
+                  >
+                    {product.active === false
+                      ? 'Inactivo'
+                      : 'Activo'}
+                  </span>
                 </div>
 
                 <span
@@ -251,7 +351,7 @@ function ProductsPage() {
                   Técnicas permitidas
                 </span>
 
-                <div className="d-flex justify-content-end mt-3">
+                <div className="d-flex justify-content-end gap-2 mt-3">
                   <button
                     type="button"
                     className="btn btn-outline-primary btn-sm"
@@ -266,8 +366,35 @@ function ProductsPage() {
                       )
                     }
                   >
-                    Editar producto
+                    Editar
                   </button>
+
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${
+                      product.active === false
+                        ? 'btn-outline-success'
+                        : 'btn-outline-danger'
+                    }`}
+                    onClick={() =>
+                      handleToggleActive(product)
+                    }
+                  >
+                    {product.active === false
+                      ? 'Activar'
+                      : 'Desactivar'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() =>
+                      handleDeleteProduct(product)
+                    }
+                  >
+                    Eliminar
+                  </button>
+
                 </div>
                 
                 <div className="technique-list">

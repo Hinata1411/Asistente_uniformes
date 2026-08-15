@@ -1,5 +1,15 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import {
+  useLocation,
+  useNavigate,
+  useParams
+} from 'react-router-dom'
+
+import {
+  doc,
+  getDoc,
+  updateDoc
+} from 'firebase/firestore'
 
 import {
   ref,
@@ -7,13 +17,27 @@ import {
   getDownloadURL
 } from 'firebase/storage'
 
-import { storage } from '../firebase/config'
-import { createProduct } from '../services/productsService'
+import {
+  db,
+  storage
+} from '../firebase/config'
+
+import {
+  createProduct
+} from '../services/productsService'
 
 import './CreateProductPage.css'
 
 function CreateProductPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { id } = useParams()
+
+  const productFromState =
+    location.state?.productToEdit || null
+
+  const isEditing =
+    Boolean(id)
 
   const [form, setForm] = useState({
     name: '',
@@ -25,20 +49,35 @@ function CreateProductPage() {
     allowedTechniques: []
   })
 
-  const [frontImageFile, setFrontImageFile] =
-    useState(null)
+  const [
+    frontImageFile,
+    setFrontImageFile
+  ] = useState(null)
 
-  const [backImageFile, setBackImageFile] =
-    useState(null)
+  const [
+    backImageFile,
+    setBackImageFile
+  ] = useState(null)
 
-  const [frontPreview, setFrontPreview] =
-    useState('')
+  const [
+    frontPreview,
+    setFrontPreview
+  ] = useState('')
 
-  const [backPreview, setBackPreview] =
-    useState('')
+  const [
+    backPreview,
+    setBackPreview
+  ] = useState('')
 
-  const [loading, setLoading] =
-    useState(false)
+  const [
+    loading,
+    setLoading
+  ] = useState(false)
+
+  const [
+    loadingProduct,
+    setLoadingProduct
+  ] = useState(isEditing)
 
   const sizeOptions = [
     'S',
@@ -69,6 +108,124 @@ function CreateProductPage() {
     'Vinil textil'
   ]
 
+  useEffect(() => {
+    const loadProduct = async () => {
+      if (!isEditing) {
+        return
+      }
+
+      try {
+        setLoadingProduct(true)
+
+        let productData =
+          productFromState
+
+        if (!productData) {
+          const productRef =
+            doc(
+              db,
+              'products',
+              id
+            )
+
+          const productSnap =
+            await getDoc(
+              productRef
+            )
+
+          if (!productSnap.exists()) {
+            alert(
+              'El producto no existe'
+            )
+
+            navigate('/productos')
+            return
+          }
+
+          productData = {
+            id:
+              productSnap.id,
+
+            ...productSnap.data()
+          }
+        }
+
+        setForm({
+          name:
+            productData.name || '',
+
+          type:
+            productData.type || '',
+
+          color:
+            productData.color || '',
+
+          stock:
+            Number(
+              productData.stock || 0
+            ),
+
+          sizes:
+            Array.isArray(
+              productData.sizes
+            )
+              ? productData.sizes
+              : [],
+
+          availableSides:
+            Array.isArray(
+              productData.availableSides
+            )
+              ? productData.availableSides
+              : [],
+
+          allowedTechniques:
+            Array.isArray(
+              productData.allowedTechniques
+            )
+              ? productData.allowedTechniques
+              : []
+        })
+
+        const frontImage =
+          productData.images?.frente ||
+          productData.frontImage ||
+          ''
+
+        const backImage =
+          productData.images?.espalda ||
+          productData.backImage ||
+          ''
+
+        setFrontPreview(
+          frontImage
+        )
+
+        setBackPreview(
+          backImage
+        )
+      } catch (error) {
+        console.error(
+          'Error cargando producto:',
+          error
+        )
+
+        alert(
+          'No se pudo cargar el producto'
+        )
+      } finally {
+        setLoadingProduct(false)
+      }
+    }
+
+    loadProduct()
+  }, [
+    id,
+    isEditing,
+    navigate,
+    productFromState
+  ])
+
   const toggleArrayValue = (
     field,
     value
@@ -83,20 +240,23 @@ function CreateProductPage() {
       return {
         ...prev,
 
-        [field]: exists
-          ? currentValues.filter(
-              (item) =>
-                item !== value
-            )
-          : [
-              ...currentValues,
-              value
-            ]
+        [field]:
+          exists
+            ? currentValues.filter(
+                (item) =>
+                  item !== value
+              )
+            : [
+                ...currentValues,
+                value
+              ]
       }
     })
   }
 
-  const validateImage = (file) => {
+  const validateImage = (
+    file
+  ) => {
     if (!file) {
       return false
     }
@@ -122,7 +282,9 @@ function CreateProductPage() {
     const maxSize =
       5 * 1024 * 1024
 
-    if (file.size > maxSize) {
+    if (
+      file.size > maxSize
+    ) {
       alert(
         'La imagen no puede superar los 5 MB.'
       )
@@ -133,7 +295,9 @@ function CreateProductPage() {
     return true
   }
 
-  const handleFrontImage = (e) => {
+  const handleFrontImage = (
+    e
+  ) => {
     const file =
       e.target.files?.[0]
 
@@ -141,19 +305,27 @@ function CreateProductPage() {
       return
     }
 
-    if (!validateImage(file)) {
+    if (
+      !validateImage(file)
+    ) {
       e.target.value = ''
       return
     }
 
-    setFrontImageFile(file)
+    setFrontImageFile(
+      file
+    )
 
     setFrontPreview(
-      URL.createObjectURL(file)
+      URL.createObjectURL(
+        file
+      )
     )
   }
 
-  const handleBackImage = (e) => {
+  const handleBackImage = (
+    e
+  ) => {
     const file =
       e.target.files?.[0]
 
@@ -161,15 +333,21 @@ function CreateProductPage() {
       return
     }
 
-    if (!validateImage(file)) {
+    if (
+      !validateImage(file)
+    ) {
       e.target.value = ''
       return
     }
 
-    setBackImageFile(file)
+    setBackImageFile(
+      file
+    )
 
     setBackPreview(
-      URL.createObjectURL(file)
+      URL.createObjectURL(
+        file
+      )
     )
   }
 
@@ -210,7 +388,9 @@ function CreateProductPage() {
       return downloadURL
     }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (
+    e
+  ) => {
     e.preventDefault()
 
     if (
@@ -229,7 +409,10 @@ function CreateProductPage() {
       return
     }
 
-    if (!frontImageFile) {
+    if (
+      !isEditing &&
+      !frontImageFile
+    ) {
       alert(
         'Selecciona la imagen frontal del producto'
       )
@@ -240,21 +423,33 @@ function CreateProductPage() {
     try {
       setLoading(true)
 
-      const frontImageUrl =
-        await uploadProductImage(
-          frontImageFile,
-          'front'
-        )
+      let frontImageUrl =
+        frontPreview
 
-      const backImageUrl =
+      let backImageUrl =
+        backPreview
+
+      if (
+        frontImageFile
+      ) {
+        frontImageUrl =
+          await uploadProductImage(
+            frontImageFile,
+            'front'
+          )
+      }
+
+      if (
         backImageFile
-          ? await uploadProductImage(
-              backImageFile,
-              'back'
-            )
-          : ''
+      ) {
+        backImageUrl =
+          await uploadProductImage(
+            backImageFile,
+            'back'
+          )
+      }
 
-      await createProduct({
+      const productData = {
         name:
           form.name.trim(),
 
@@ -265,7 +460,9 @@ function CreateProductPage() {
           form.color.trim(),
 
         stock:
-          Number(form.stock),
+          Number(
+            form.stock
+          ),
 
         sizes:
           form.sizes,
@@ -288,26 +485,69 @@ function CreateProductPage() {
           frontImageUrl,
 
         backImage:
-          backImageUrl
-      })
+          backImageUrl,
 
-      alert(
-        'Producto registrado correctamente'
+        updatedAt:
+          new Date()
+            .toISOString()
+      }
+
+      if (isEditing) {
+        await updateDoc(
+          doc(
+            db,
+            'products',
+            id
+          ),
+          productData
+        )
+
+        alert(
+          'Producto actualizado correctamente'
+        )
+      } else {
+        await createProduct({
+          ...productData,
+
+          createdAt:
+            new Date()
+              .toISOString()
+        })
+
+        alert(
+          'Producto registrado correctamente'
+        )
+      }
+
+      navigate(
+        '/productos'
       )
-
-      navigate('/productos')
     } catch (error) {
       console.error(
-        'Error creando producto:',
+        isEditing
+          ? 'Error actualizando producto:'
+          : 'Error creando producto:',
         error
       )
 
       alert(
-        `No se pudo registrar el producto: ${error.message}`
+        isEditing
+          ? `No se pudo actualizar el producto: ${error.message}`
+          : `No se pudo registrar el producto: ${error.message}`
       )
     } finally {
       setLoading(false)
     }
+  }
+
+  if (loadingProduct) {
+    return (
+      <div className="create-product-page">
+        <div className="app-card p-4">
+          Cargando producto...
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -315,17 +555,23 @@ function CreateProductPage() {
 
       <div className="mb-4">
         <h2 className="page-title">
-          Nuevo producto
+          {isEditing
+            ? 'Editar producto'
+            : 'Nuevo producto'}
         </h2>
 
         <p className="page-subtitle">
-          Registra una nueva prenda disponible para personalización.
+          {isEditing
+            ? 'Actualiza la información de la prenda disponible para personalización.'
+            : 'Registra una nueva prenda disponible para personalización.'}
         </p>
       </div>
 
       <form
         className="app-card p-4"
-        onSubmit={handleSubmit}
+        onSubmit={
+          handleSubmit
+        }
       >
         <div className="row g-3">
 
@@ -339,7 +585,9 @@ function CreateProductPage() {
             <input
               type="text"
               className="form-control"
-              value={form.name}
+              value={
+                form.name
+              }
               onChange={(e) =>
                 setForm({
                   ...form,
@@ -361,7 +609,9 @@ function CreateProductPage() {
 
             <select
               className="form-select"
-              value={form.type}
+              value={
+                form.type
+              }
               onChange={(e) =>
                 setForm({
                   ...form,
@@ -424,7 +674,9 @@ function CreateProductPage() {
               type="number"
               className="form-control"
               min="0"
-              value={form.stock}
+              value={
+                form.stock
+              }
               onChange={(e) =>
                 setForm({
                   ...form,
@@ -448,7 +700,9 @@ function CreateProductPage() {
             <input
               type="text"
               className="form-control"
-              value={form.color}
+              value={
+                form.color
+              }
               onChange={(e) =>
                 setForm({
                   ...form,
@@ -472,7 +726,9 @@ function CreateProductPage() {
               {sizeOptions.map(
                 (size) => (
                   <label
-                    key={size}
+                    key={
+                      size
+                    }
                     className="option-check"
                   >
                     <input
@@ -510,7 +766,9 @@ function CreateProductPage() {
               {sideOptions.map(
                 (side) => (
                   <label
-                    key={side.value}
+                    key={
+                      side.value
+                    }
                     className="option-check"
                   >
                     <input
@@ -546,9 +804,13 @@ function CreateProductPage() {
 
             <div className="option-group">
               {techniqueOptions.map(
-                (technique) => (
+                (
+                  technique
+                ) => (
                   <label
-                    key={technique}
+                    key={
+                      technique
+                    }
                     className="option-check"
                   >
                     <input
@@ -592,19 +854,30 @@ function CreateProductPage() {
             />
 
             <div className="form-text">
-              PNG, JPG o WEBP. Máximo 5 MB.
+              {isEditing
+                ? 'Selecciona una nueva imagen únicamente si deseas reemplazar la actual.'
+                : 'PNG, JPG o WEBP. Máximo 5 MB.'}
             </div>
 
             {frontPreview && (
               <div className="mt-3">
                 <img
-                  src={frontPreview}
+                  src={
+                    frontPreview
+                  }
                   alt="Vista previa frontal"
                   style={{
-                    width: '100%',
-                    maxHeight: '250px',
-                    objectFit: 'contain',
-                    borderRadius: '8px'
+                    width:
+                      '100%',
+
+                    maxHeight:
+                      '250px',
+
+                    objectFit:
+                      'contain',
+
+                    borderRadius:
+                      '8px'
                   }}
                 />
               </div>
@@ -628,19 +901,30 @@ function CreateProductPage() {
             />
 
             <div className="form-text">
-              Opcional. PNG, JPG o WEBP. Máximo 5 MB.
+              {isEditing
+                ? 'Opcional. Selecciona otra imagen si deseas reemplazar la actual.'
+                : 'Opcional. PNG, JPG o WEBP. Máximo 5 MB.'}
             </div>
 
             {backPreview && (
               <div className="mt-3">
                 <img
-                  src={backPreview}
+                  src={
+                    backPreview
+                  }
                   alt="Vista previa trasera"
                   style={{
-                    width: '100%',
-                    maxHeight: '250px',
-                    objectFit: 'contain',
-                    borderRadius: '8px'
+                    width:
+                      '100%',
+
+                    maxHeight:
+                      '250px',
+
+                    objectFit:
+                      'contain',
+
+                    borderRadius:
+                      '8px'
                   }}
                 />
               </div>
@@ -655,9 +939,13 @@ function CreateProductPage() {
             type="button"
             className="btn btn-outline-secondary"
             onClick={() =>
-              navigate('/productos')
+              navigate(
+                '/productos'
+              )
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
           >
             Cancelar
           </button>
@@ -665,11 +953,17 @@ function CreateProductPage() {
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={loading}
+            disabled={
+              loading
+            }
           >
             {loading
-              ? 'Subiendo imágenes...'
-              : 'Registrar producto'}
+              ? isEditing
+                ? 'Actualizando...'
+                : 'Subiendo imágenes...'
+              : isEditing
+                ? 'Actualizar producto'
+                : 'Registrar producto'}
           </button>
 
         </div>

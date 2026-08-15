@@ -450,13 +450,24 @@ function CreateOrderPage() {
 
         <GarmentEditor
           product={selectedProduct}
+
+          customerGarmentImage={customerGarmentImage}
+
+          customerGarment={{
+            type: form.customerGarmentType,
+            color: form.customerGarmentColor
+          }}
+
           customizationSide={form.customizationSide}
+
           onPreviewChange={(base64) =>
             setPreviewBase64(base64)
           }
+
           onElementsChange={(elements) =>
             setEditorElements(elements)
           }
+
           onSave={handleSaveOrder}
         />
       </section>

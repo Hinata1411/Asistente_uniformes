@@ -1,0 +1,77 @@
+.create-product-page {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.create-product-page .app-card {
+  padding: 26px !important;
+}
+
+.create-product-page .form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 7px;
+}
+
+.create-product-page .form-control,
+.create-product-page .form-select {
+  min-height: 44px;
+}
+
+.option-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.option-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 9px 12px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+
+  background: #f8fafc;
+
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.option-check:hover {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.option-check input {
+  accent-color: #4f46e5;
+}
+
+.create-product-page .btn {
+  min-width: 130px;
+}
+
+@media (max-width: 768px) {
+  .create-product-page .app-card {
+    padding: 18px !important;
+  }
+
+  .option-group {
+    flex-direction: column;
+  }
+
+  .option-check {
+    width: 100%;
+  }
+}

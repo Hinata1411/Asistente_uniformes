@@ -1,9 +1,11 @@
+import { Link } from 'react-router-dom'
 import { inventoryProducts } from '../data/inventoryProducts'
 import './ProductsPage.css'
 
 function ProductsPage() {
   return (
     <div className="products-page">
+
       <div className="products-header">
         <div>
           <h2 className="page-title">
@@ -15,6 +17,13 @@ function ProductsPage() {
             sus tallas, técnicas y stock actual.
           </p>
         </div>
+
+        <Link
+          to="/productos/nuevo"
+          className="btn btn-primary"
+        >
+          + Nuevo producto
+        </Link>
       </div>
 
       <div className="products-grid">
@@ -32,13 +41,16 @@ function ProductsPage() {
             </div>
 
             <div className="product-content">
+
               <div className="product-title-row">
                 <div>
                   <span className="product-type">
                     {product.type}
                   </span>
 
-                  <h3>{product.name}</h3>
+                  <h3>
+                    {product.name}
+                  </h3>
                 </div>
 
                 <span
@@ -55,6 +67,7 @@ function ProductsPage() {
               </div>
 
               <div className="product-info-grid">
+
                 <div>
                   <span className="product-info-label">
                     Color
@@ -71,7 +84,9 @@ function ProductsPage() {
                   </span>
 
                   <strong>
-                    {product.sizes.join(', ')}
+                    {product.sizes?.length > 0
+                      ? product.sizes.join(', ')
+                      : 'No definidas'}
                   </strong>
                 </div>
 
@@ -81,17 +96,20 @@ function ProductsPage() {
                   </span>
 
                   <strong>
-                    {product.availableSides
-                      .map((side) =>
-                        side === 'frente'
-                          ? 'Frente'
-                          : side === 'espalda'
-                          ? 'Espalda'
-                          : 'Ambos'
-                      )
-                      .join(', ')}
+                    {product.availableSides?.length > 0
+                      ? product.availableSides
+                          .map((side) =>
+                            side === 'frente'
+                              ? 'Frente'
+                              : side === 'espalda'
+                              ? 'Espalda'
+                              : 'Ambos'
+                          )
+                          .join(', ')
+                      : 'No definida'}
                   </strong>
                 </div>
+
               </div>
 
               <div className="product-techniques">
@@ -100,18 +118,25 @@ function ProductsPage() {
                 </span>
 
                 <div className="technique-list">
-                  {product.allowedTechniques.map(
-                    (technique) => (
-                      <span
-                        key={technique}
-                        className="technique-tag"
-                      >
-                        {technique}
-                      </span>
+                  {product.allowedTechniques?.length > 0 ? (
+                    product.allowedTechniques.map(
+                      (technique) => (
+                        <span
+                          key={technique}
+                          className="technique-tag"
+                        >
+                          {technique}
+                        </span>
+                      )
                     )
+                  ) : (
+                    <span className="text-muted small">
+                      No hay técnicas configuradas.
+                    </span>
                   )}
                 </div>
               </div>
+
             </div>
           </article>
         ))}
@@ -122,6 +147,7 @@ function ProductsPage() {
           No hay productos registrados.
         </div>
       )}
+
     </div>
   )
 }

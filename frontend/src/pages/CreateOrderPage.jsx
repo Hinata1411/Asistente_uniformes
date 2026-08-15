@@ -215,25 +215,50 @@ function CreateOrderPage() {
 
   const handleGenerateAI = async () => {
     try {
+      const isInventoryGarment =
+        form.garmentSource === 'inventory'
+
+      const isCustomerGarment =
+        form.garmentSource === 'customer'
+
       if (
-        !selectedProduct ||
         !form.size ||
         !form.technique ||
         !form.quantity ||
         !form.customizationSide
       ) {
         alert(
-          'Selecciona producto, talla, técnica, cantidad y lado de personalización'
+          'Completa talla, técnica, cantidad y área de personalización'
         )
         return
       }
 
+      if (isInventoryGarment && !selectedProduct) {
+        alert('Selecciona un producto válido del inventario')
+        return
+      }
+
+      if (
+        isCustomerGarment &&
+        (!form.customerGarmentType ||
+          !form.customerGarmentColor ||
+          !customerGarmentImage)
+      ) {
+        alert(
+          'Completa los datos de la prenda del cliente y carga una fotografía'
+        )
+        return
+      }
+      
       if (form.quantity <= 0) {
         alert('La cantidad debe ser mayor a 0')
         return
       }
 
-      if (form.quantity > selectedProduct.stock) {
+      if (
+        isInventoryGarment &&
+        form.quantity > selectedProduct.stock
+      ) {
         alert(
           `Solo hay ${selectedProduct.stock} unidades disponibles`
         )
@@ -253,13 +278,30 @@ function CreateOrderPage() {
           },
 
           body: JSON.stringify({
-            product: selectedProduct.name,
-            productType: selectedProduct.type,
-            productColor: selectedProduct.color,
+            garmentSource: form.garmentSource,
+
+            product: isInventoryGarment
+              ? selectedProduct.name
+              : form.customerGarmentDescription ||
+                form.customerGarmentType,
+
+            productType: isInventoryGarment
+              ? selectedProduct.type
+              : form.customerGarmentType,
+
+            productColor: isInventoryGarment
+              ? selectedProduct.color
+              : form.customerGarmentColor,
+
             size: form.size,
             technique: form.technique,
             quantity: form.quantity,
             customizationSide: form.customizationSide,
+
+            customerGarmentDescription: isCustomerGarment
+              ? form.customerGarmentDescription
+              : '',
+
             previewImage: previewBase64,
             elements: editorElements
           })

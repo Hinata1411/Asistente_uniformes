@@ -8,6 +8,7 @@ import {
   updateDoc
 } from 'firebase/firestore'
 import jsPDF from 'jspdf'
+import OrderAIValidationDetails from '../components/OrderAIValidationDetails'
 
 function OrdersHistoryPage() {
   const [orders, setOrders] = useState([])
@@ -259,9 +260,10 @@ function OrdersHistoryPage() {
                     <strong>Técnica:</strong> {o.technique || 'No definida'}
                   </p>
 
-                  <p className="mb-1">
-                    <strong>Asistente:</strong> {getAssistantRecommendation(o)}
-                  </p>
+                  <OrderAIValidationDetails
+                    validation={o.aiValidation}
+                    validatedAt={o.aiValidatedAt}
+                  />
 
                   <p className="mb-1">
                     <strong>Estado:</strong>{' '}

@@ -1,10 +1,17 @@
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+
 import { db, storage } from '../firebase/config'
 import { collection, addDoc, doc, updateDoc } from 'firebase/firestore'
 import { ref, uploadString, getDownloadURL } from 'firebase/storage'
-import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+
 import GarmentEditor from '../components/GarmentEditor'
+import CustomerGarmentForm from '../components/orders/CustomerGarmentForm'
+import InventoryGarmentForm from '../components/orders/InventoryGarmentForm'
+import GarmentSourceSelector from '../components/orders/GarmentSourceSelector'
+
 import { inventoryProducts } from '../data/inventoryProducts'
+
 import './CreateOrderPage.css'
 
 function CreateOrderPage() {
@@ -385,289 +392,32 @@ function CreateOrderPage() {
           </div>
         </div>
 
-        <div className="garment-source-selector">
-          <label className="form-label">
-            Origen de la prenda
-          </label>
-
-          <div className="garment-source-options">
-            <label
-              className={`garment-source-option ${
-                form.garmentSource === 'inventory'
-                  ? 'active'
-                  : ''
-              }`}
-            >
-              <input
-                type="radio"
-                name="garmentSource"
-                value="inventory"
-                checked={form.garmentSource === 'inventory'}
-                onChange={() => {
-                  setForm({
-                    ...form,
-                    garmentSource: 'inventory'
-                  })
-
-                  setAiResult(null)
-                  setPreviewBase64('')
-                  setEditorElements([])
-                }}
-              />
-
-              <div>
-                <strong>
-                  Producto del inventario
-                </strong>
-
-                <span>
-                  Selecciona una prenda disponible en el catálogo.
-                </span>
-              </div>
-            </label>
-
-            <label
-              className={`garment-source-option ${
-                form.garmentSource === 'customer'
-                  ? 'active'
-                  : ''
-              }`}
-            >
-              <input
-                type="radio"
-                name="garmentSource"
-                value="customer"
-                checked={form.garmentSource === 'customer'}
-                onChange={() => {
-                  setForm({
-                    ...form,
-                    garmentSource: 'customer',
-                    productId: '',
-                    size: '',
-                    technique: '',
-                    customizationSide: ''
-                  })
-
-                  setAiResult(null)
-                  setPreviewBase64('')
-                  setEditorElements([])
-                }}
-              />
-
-              <div>
-                <strong>
-                  Prenda proporcionada por el cliente
-                </strong>
-
-                <span>
-                  Registra una prenda externa que no pertenece al inventario.
-                </span>
-              </div>
-            </label>
-          </div>
-        </div>
+        <GarmentSourceSelector
+          form={form}
+          setForm={setForm}
+          setAiResult={setAiResult}
+          setPreviewBase64={setPreviewBase64}
+          setEditorElements={setEditorElements}
+        />
 
         {form.garmentSource === 'inventory' && (
-        <div className="row g-3">
-          <div className="col-12 col-md-6 col-xl-3">
-            <label className="form-label">
-              Producto
-            </label>
+          <InventoryGarmentForm
+            form={form}
+            setForm={setForm}
+            selectedProduct={selectedProduct}
+            inventoryProducts={inventoryProducts}
+            setAiResult={setAiResult}
+            setPreviewBase64={setPreviewBase64}
+            setEditorElements={setEditorElements}
+          />
+        )}
 
-            <select
-              className="form-select"
-              value={form.productId}
-              onChange={(e) => {
-                setForm({
-                  ...form,
-                  productId: e.target.value,
-                  size: '',
-                  technique: '',
-                  customizationSide: ''
-                })
-
-                setAiResult(null)
-                setPreviewBase64('')
-                setEditorElements([])
-              }}
-            >
-              <option value="">
-                Seleccione
-              </option>
-
-              {inventoryProducts.map((product) => (
-                <option
-                  key={product.id}
-                  value={product.id}
-                >
-                  {product.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-6 col-xl-2">
-            <label className="form-label">
-              Talla
-            </label>
-
-            <select
-              className="form-select"
-              value={form.size}
-              disabled={!selectedProduct}
-              onChange={(e) => {
-                setForm({
-                  ...form,
-                  size: e.target.value
-                })
-
-                setAiResult(null)
-              }}
-            >
-              <option value="">
-                Seleccione
-              </option>
-
-              {selectedProduct?.sizes.map((size) => (
-                <option
-                  key={size}
-                  value={size}
-                >
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-6 col-xl-2">
-            <label className="form-label">
-              Cantidad
-            </label>
-
-            <input
-              type="number"
-              className="form-control"
-              min="1"
-              max={selectedProduct?.stock || undefined}
-              value={form.quantity}
-              onChange={(e) => {
-                setForm({
-                  ...form,
-                  quantity: Number(e.target.value)
-                })
-
-                setAiResult(null)
-              }}
-            />
-          </div>
-
-          <div className="col-12 col-md-6 col-xl-3">
-            <label className="form-label">
-              Técnica
-            </label>
-
-            <select
-              className="form-select"
-              value={form.technique}
-              disabled={!selectedProduct}
-              onChange={(e) => {
-                setForm({
-                  ...form,
-                  technique: e.target.value
-                })
-
-                setAiResult(null)
-              }}
-            >
-              <option value="">
-                Seleccione
-              </option>
-
-              {selectedProduct?.allowedTechniques.map(
-                (technique) => (
-                  <option
-                    key={technique}
-                    value={technique}
-                  >
-                    {technique}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-6 col-xl-2">
-            <label className="form-label">
-              Área
-            </label>
-
-            <select
-              className="form-select"
-              value={form.customizationSide}
-              disabled={!selectedProduct}
-              onChange={(e) => {
-                setForm({
-                  ...form,
-                  customizationSide: e.target.value
-                })
-
-                setAiResult(null)
-                setPreviewBase64('')
-              }}
-            >
-              <option value="">
-                Seleccione
-              </option>
-
-              {selectedProduct?.availableSides.map((side) => (
-                <option
-                  key={side}
-                  value={side}
-                >
-                  {side === 'frente'
-                    ? 'Frente'
-                    : side === 'espalda'
-                    ? 'Espalda'
-                    : 'Frente y espalda'}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-      
-        {selectedProduct && (
-          <div className="selected-product-summary">
-            <div>
-              <span className="summary-label">
-                Producto seleccionado
-              </span>
-
-              <strong>
-                {selectedProduct.name}
-              </strong>
-            </div>
-
-            <div>
-              <span className="summary-label">
-                Color
-              </span>
-
-              <strong>
-                {selectedProduct.color}
-              </strong>
-            </div>
-
-            <div>
-              <span className="summary-label">
-                Stock disponible
-              </span>
-
-              <strong>
-                {selectedProduct.stock}
-              </strong>
-            </div>
-          </div>
+        {form.garmentSource === 'customer' && (
+          <CustomerGarmentForm
+            form={form}
+            setForm={setForm}
+            setAiResult={setAiResult}
+          />
         )}
       </section>
 
@@ -752,34 +502,27 @@ function CreateOrderPage() {
             <div className="ai-result-grid">
               <div className="ai-result-item">
                 <span>Compatibilidad técnica</span>
-
                 <strong>
-                  {aiResult.techniqueCompatibility ||
-                    'No especificado'}
+                  {aiResult.techniqueCompatibility || 'No especificado'}
                 </strong>
               </div>
 
               <div className="ai-result-item">
                 <span>Ubicación detectada</span>
-
                 <strong>
-                  {aiResult.detectedPlacement ||
-                    'No detectada'}
+                  {aiResult.detectedPlacement || 'No detectada'}
                 </strong>
               </div>
 
               <div className="ai-result-item">
                 <span>Proporción visual</span>
-
                 <strong>
-                  {aiResult.visualFit ||
-                    'No especificada'}
+                  {aiResult.visualFit || 'No especificada'}
                 </strong>
               </div>
 
               <div className="ai-result-item">
                 <span>Colores de producción</span>
-
                 <strong>
                   {aiResult.productionColors?.length > 0
                     ? aiResult.productionColors.join(', ')
@@ -790,57 +533,40 @@ function CreateOrderPage() {
 
             <div className="ai-detail-block">
               <h5>Recomendación general</h5>
-
               <p>
-                {aiResult.recommendation ||
-                  'Sin recomendación'}
+                {aiResult.recommendation || 'Sin recomendación'}
               </p>
             </div>
 
             <div className="ai-detail-block">
               <h5>Mensaje para el cliente</h5>
-
               <p>
-                {aiResult.clientMessage ||
-                  'Sin mensaje'}
+                {aiResult.clientMessage || 'Sin mensaje'}
               </p>
             </div>
 
             <div className="ai-detail-block">
               <h5>Nota para producción</h5>
-
               <p>
-                {aiResult.productionNote ||
-                  'Sin nota'}
+                {aiResult.productionNote || 'Sin nota'}
               </p>
             </div>
 
             <div className="row g-3">
               <div className="col-12 col-lg-6">
                 <div className="ai-list-block">
-                  <h5>
-                    Tamaños recomendados
-                  </h5>
+                  <h5>Tamaños recomendados</h5>
 
                   <ul>
                     {aiResult.recommendedSizes?.length > 0 ? (
-                      aiResult.recommendedSizes.map(
-                        (item, index) => (
-                          <li key={index}>
-                            <strong>
-                              {item.element}
-                            </strong>
-
-                            {' — '}
-
-                            {item.recommendedSize}
-
-                            {item.note
-                              ? ` · ${item.note}`
-                              : ''}
-                          </li>
-                        )
-                      )
+                      aiResult.recommendedSizes.map((item, index) => (
+                        <li key={index}>
+                          <strong>{item.element}</strong>
+                          {' — '}
+                          {item.recommendedSize}
+                          {item.note ? ` · ${item.note}` : ''}
+                        </li>
+                      ))
                     ) : (
                       <li>No definidos</li>
                     )}
@@ -850,23 +576,17 @@ function CreateOrderPage() {
 
               <div className="col-12 col-lg-6">
                 <div className="ai-list-block">
-                  <h5>
-                    Advertencias
-                  </h5>
+                  <h5>Advertencias</h5>
 
                   <ul>
                     {aiResult.warnings?.length > 0 ? (
-                      aiResult.warnings.map(
-                        (warning, index) => (
-                          <li key={index}>
-                            {warning}
-                          </li>
-                        )
-                      )
+                      aiResult.warnings.map((warning, index) => (
+                        <li key={index}>
+                          {warning}
+                        </li>
+                      ))
                     ) : (
-                      <li>
-                        Sin advertencias
-                      </li>
+                      <li>Sin advertencias</li>
                     )}
                   </ul>
                 </div>

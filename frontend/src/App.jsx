@@ -9,6 +9,7 @@ import AppLayout from './components/AppLayout'
 import ProductsPage from './pages/ProductsPage'
 import CreateProductPage from './pages/CreateProductPage'
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage'
+import { useAuth } from './context/AuthContext'
 
 function ProtectedLayout({ children, allowedRoles }) {
   return (
@@ -18,6 +19,32 @@ function ProtectedLayout({ children, allowedRoles }) {
       </AppLayout>
     </PrivateRoute>
   )
+}
+
+function RoleRedirect() {
+  const { user, role, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="container py-5 text-center">
+        Cargando...
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (role === 'admin') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  if (role === 'empleado') {
+    return <Navigate to="/empleado" replace />
+  }
+
+  return <Navigate to="/login" replace />
 }
 
 function App() {
@@ -82,7 +109,7 @@ function App() {
 
         <Route
           path="/"
-          element={<Navigate to="/crearpedido" replace />}
+          element={<RoleRedirect />}
         />
 
         <Route

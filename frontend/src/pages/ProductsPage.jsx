@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getDocs } from 'firebase/firestore'
+import {
+  collection,
+  getDocs,
+  doc,
+  updateDoc
+} from 'firebase/firestore'
 
 import { db } from '../firebase/config'
 import './ProductsPage.css'
@@ -36,7 +41,50 @@ function ProductsPage() {
 
     loadProducts()
   }, [])
-  
+
+  const handleStockChange = async (
+    productId,
+    currentStock,
+    change
+  ) => {
+    const newStock =
+      Number(currentStock || 0) + change
+
+    if (newStock < 0) {
+      alert('El stock no puede ser negativo')
+      return
+    }
+
+    try {
+      await updateDoc(
+        doc(db, 'products', productId),
+        {
+          stock: newStock
+        }
+      )
+
+      setProducts((prev) =>
+        prev.map((product) =>
+          product.id === productId
+            ? {
+                ...product,
+                stock: newStock
+              }
+            : product
+        )
+      )
+    } catch (error) {
+      console.error(
+        'Error actualizando stock:',
+        error
+      )
+
+      alert(
+        'No se pudo actualizar el stock'
+      )
+    }
+  }
+
   return (
     <div className="products-page">
 
@@ -47,8 +95,9 @@ function ProductsPage() {
           </h2>
 
           <p className="page-subtitle">
-            Consulta las prendas disponibles para personalización,
-            sus tallas, técnicas y stock actual.
+            Consulta las prendas disponibles para
+            personalización, sus tallas, técnicas
+            y stock actual.
           </p>
         </div>
 
@@ -98,12 +147,53 @@ function ProductsPage() {
                     product.stock > 5
                       ? 'stock-ok'
                       : product.stock > 0
-                      ? 'stock-low'
-                      : 'stock-empty'
+                        ? 'stock-low'
+                        : 'stock-empty'
                   }`}
                 >
                   {product.stock} disponibles
                 </span>
+              </div>
+
+              <div className="mt-3">
+                <span className="product-info-label">
+                  Ajustar stock
+                </span>
+
+                <div className="d-flex align-items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() =>
+                      handleStockChange(
+                        product.id,
+                        product.stock,
+                        -1
+                      )
+                    }
+                    disabled={product.stock <= 0}
+                  >
+                    −
+                  </button>
+
+                  <strong>
+                    {product.stock}
+                  </strong>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-success btn-sm"
+                    onClick={() =>
+                      handleStockChange(
+                        product.id,
+                        product.stock,
+                        1
+                      )
+                    }
+                  >
+                    +
+                  </button>
+                </div>
               </div>
 
               <div className="product-info-grid">
@@ -142,8 +232,8 @@ function ProductsPage() {
                             side === 'frente'
                               ? 'Frente'
                               : side === 'espalda'
-                              ? 'Espalda'
-                              : 'Ambos'
+                                ? 'Espalda'
+                                : 'Ambos'
                           )
                           .join(', ')
                       : 'No definida'}

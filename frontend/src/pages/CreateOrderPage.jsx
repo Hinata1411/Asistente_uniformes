@@ -9,6 +9,7 @@ import GarmentEditor from '../components/GarmentEditor'
 import CustomerGarmentForm from '../components/orders/CustomerGarmentForm'
 import InventoryGarmentForm from '../components/orders/InventoryGarmentForm'
 import GarmentSourceSelector from '../components/orders/GarmentSourceSelector'
+import CustomerGarmentPreview from '../components/orders/CustomerGarmentPreview'
 
 import { inventoryProducts } from '../data/inventoryProducts'
 
@@ -22,6 +23,7 @@ function CreateOrderPage() {
   const [loadingAI, setLoadingAI] = useState(false)
   const [previewBase64, setPreviewBase64] = useState('')
   const [editorElements, setEditorElements] = useState([])
+  const [customerGarmentImage, setCustomerGarmentImage] = useState('')
 
   const initialForm = {
     garmentSource: 'inventory',
@@ -85,6 +87,7 @@ function CreateOrderPage() {
     setAiResult(null)
     setPreviewBase64('')
     setEditorElements([])
+    setCustomerGarmentImage('')
     setEditingOrder(null)
   }
 
@@ -433,6 +436,17 @@ function CreateOrderPage() {
             </p>
           </div>
         </div>
+
+        {form.garmentSource === 'customer' && (
+          <CustomerGarmentPreview
+            form={form}
+            onImageChange={(image) => {
+              setCustomerGarmentImage(image)
+              setPreviewBase64('')
+              setAiResult(null)
+            }}
+          />
+        )}
 
         <GarmentEditor
           product={selectedProduct}

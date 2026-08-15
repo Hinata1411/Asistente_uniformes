@@ -17,15 +17,22 @@ function CreateOrderPage() {
   const [editorElements, setEditorElements] = useState([])
 
   const initialForm = {
+    garmentSource: 'inventory',
+
     customerName: '',
     phone: '',
+
     productId: '',
+
+    customerGarmentType: '',
+    customerGarmentDescription: '',
+    customerGarmentColor: '',
+
     size: '',
     quantity: 1,
     technique: '',
     customizationSide: ''
   }
-
   const [form, setForm] = useState(initialForm)
 
   const selectedProduct = inventoryProducts.find(
@@ -37,9 +44,22 @@ function CreateOrderPage() {
       const order = location.state.orderToEdit
 
       setForm({
+        garmentSource: order.garmentSource || 'inventory',
+
         customerName: order.customerName || '',
         phone: order.phone || '',
+
         productId: order.productId || '',
+
+        customerGarmentType:
+          order.customerGarment?.type || '',
+
+        customerGarmentDescription:
+          order.customerGarment?.description || '',
+
+        customerGarmentColor:
+          order.customerGarment?.color || '',
+
         size: order.size || '',
         quantity: order.quantity || 1,
         technique: order.technique || '',
@@ -365,6 +385,89 @@ function CreateOrderPage() {
           </div>
         </div>
 
+        <div className="garment-source-selector">
+          <label className="form-label">
+            Origen de la prenda
+          </label>
+
+          <div className="garment-source-options">
+            <label
+              className={`garment-source-option ${
+                form.garmentSource === 'inventory'
+                  ? 'active'
+                  : ''
+              }`}
+            >
+              <input
+                type="radio"
+                name="garmentSource"
+                value="inventory"
+                checked={form.garmentSource === 'inventory'}
+                onChange={() => {
+                  setForm({
+                    ...form,
+                    garmentSource: 'inventory'
+                  })
+
+                  setAiResult(null)
+                  setPreviewBase64('')
+                  setEditorElements([])
+                }}
+              />
+
+              <div>
+                <strong>
+                  Producto del inventario
+                </strong>
+
+                <span>
+                  Selecciona una prenda disponible en el catálogo.
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`garment-source-option ${
+                form.garmentSource === 'customer'
+                  ? 'active'
+                  : ''
+              }`}
+            >
+              <input
+                type="radio"
+                name="garmentSource"
+                value="customer"
+                checked={form.garmentSource === 'customer'}
+                onChange={() => {
+                  setForm({
+                    ...form,
+                    garmentSource: 'customer',
+                    productId: '',
+                    size: '',
+                    technique: '',
+                    customizationSide: ''
+                  })
+
+                  setAiResult(null)
+                  setPreviewBase64('')
+                  setEditorElements([])
+                }}
+              />
+
+              <div>
+                <strong>
+                  Prenda proporcionada por el cliente
+                </strong>
+
+                <span>
+                  Registra una prenda externa que no pertenece al inventario.
+                </span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {form.garmentSource === 'inventory' && (
         <div className="row g-3">
           <div className="col-12 col-md-6 col-xl-3">
             <label className="form-label">
@@ -531,7 +634,8 @@ function CreateOrderPage() {
             </select>
           </div>
         </div>
-
+      )}
+      
         {selectedProduct && (
           <div className="selected-product-summary">
             <div>

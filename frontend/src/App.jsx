@@ -7,6 +7,7 @@ import PrivateRoute from './components/PrivateRoute'
 import DashboardPage from './pages/DashboardPage'
 import AppLayout from './components/AppLayout'
 import ProductsPage from './pages/ProductsPage'
+import CreateProductPage from './pages/CreateProductPage'
 
 function ProtectedLayout({ children, allowedRoles }) {
   return (
@@ -56,6 +57,15 @@ function App() {
           element={
             <ProtectedLayout allowedRoles={['admin']}>
               <ProductsPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/productos/nuevo"
+          element={
+            <ProtectedLayout allowedRoles={['admin']}>
+              <CreateProductPage />
             </ProtectedLayout>
           }
         />

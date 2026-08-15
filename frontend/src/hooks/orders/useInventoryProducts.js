@@ -6,80 +6,169 @@ import {
 
 import { db } from '../../firebase/config'
 
-function normalizeProduct(document) {
+const normalizeKey = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const findField = (data, expectedKey) => {
+  const normalizedExpected =
+    normalizeKey(expectedKey)
+
+  const matchingKey = Object.keys(data).find(
+    (key) =>
+      normalizeKey(key) ===
+      normalizedExpected
+  )
+
+  return matchingKey
+    ? data[matchingKey]
+    : undefined
+}
+
+const normalizeProduct = (document) => {
   const data = document.data()
 
-  const sizes = Array.isArray(data.sizes)
-    ? [...data.sizes]
-    : []
+  const rawSizes =
+    findField(data, 'sizes')
 
-  const allowedTechniques = Array.isArray(
-    data.allowedTechniques
-  )
-    ? [...data.allowedTechniques]
-    : []
+  const rawTechniques =
+    findField(
+      data,
+      'allowedTechniques'
+    )
 
-  const availableSides = Array.isArray(
-    data.availableSides
-  )
-    ? [...data.availableSides]
-    : []
+  const rawSides =
+    findField(
+      data,
+      'availableSides'
+    )
 
-  return {
+  const rawFrontImage =
+    findField(
+      data,
+      'frontImage'
+    )
+
+  const rawBackImage =
+    findField(
+      data,
+      'backImage'
+    )
+
+  const normalizedProduct = {
     id: document.id,
 
-    ...data,
+    name:
+      data.name || 'Producto sin nombre',
 
-    stock: Number(data.stock ?? 0),
+    type:
+      data.type || '',
 
-    sizes,
+    color:
+      data.color || '',
 
-    allowedTechniques,
+    active:
+      data.active ?? true,
 
-    availableSides,
+    basePrice:
+      Number(data.basePrice || 0),
+
+    stock:
+      Number(data.stock || 0),
+
+    sizes:
+      Array.isArray(rawSizes)
+        ? [...rawSizes]
+        : [],
+
+    allowedTechniques:
+      Array.isArray(rawTechniques)
+        ? [...rawTechniques]
+        : [],
+
+    availableSides:
+      Array.isArray(rawSides)
+        ? [...rawSides]
+        : [],
+
+    frontImage:
+      rawFrontImage || '',
+
+    backImage:
+      rawBackImage || '',
 
     images: {
       frente:
         data.images?.frente ||
-        data.frontImage ||
+        rawFrontImage ||
         '',
 
       espalda:
         data.images?.espalda ||
-        data.backImage ||
+        rawBackImage ||
         ''
-    }
+    },
+
+    createdAt:
+      data.createdAt || ''
   }
+
+  console.log(
+    'CAMPOS ORIGINALES FIRESTORE:',
+    Object.keys(data)
+  )
+
+  console.log(
+    'PRODUCTO NORMALIZADO:',
+    normalizedProduct
+  )
+
+  return normalizedProduct
 }
 
 function useInventoryProducts() {
-  const [inventoryProducts, setInventoryProducts] =
-    useState([])
+  const [
+    inventoryProducts,
+    setInventoryProducts
+  ] = useState([])
 
-  const [loadingProducts, setLoadingProducts] =
-    useState(true)
+  const [
+    loadingProducts,
+    setLoadingProducts
+  ] = useState(true)
 
-  const [productsError, setProductsError] =
-    useState(null)
+  const [
+    productsError,
+    setProductsError
+  ] = useState(null)
 
   const loadProducts = async () => {
     try {
       setLoadingProducts(true)
       setProductsError(null)
 
-      const snapshot = await getDocs(
-        collection(db, 'products')
-      )
+      const snapshot =
+        await getDocs(
+          collection(
+            db,
+            'products'
+          )
+        )
 
       const productsData =
-        snapshot.docs.map(normalizeProduct)
+        snapshot.docs.map(
+          normalizeProduct
+        )
 
       console.log(
         'INVENTARIO CARGADO:',
         productsData
       )
 
-      setInventoryProducts(productsData)
+      setInventoryProducts(
+        productsData
+      )
     } catch (error) {
       console.error(
         'Error cargando inventario:',

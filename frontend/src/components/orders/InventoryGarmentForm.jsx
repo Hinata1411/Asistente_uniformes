@@ -7,6 +7,25 @@ function InventoryGarmentForm({
   setPreviewBase64,
   setEditorElements
 }) {
+  console.log(
+  'PRODUCTO RECIBIDO EN InventoryGarmentForm:',
+  selectedProduct
+)
+
+console.log(
+  'TALLAS RECIBIDAS:',
+  selectedProduct?.sizes
+)
+
+console.log(
+  'TECNICAS RECIBIDAS:',
+  selectedProduct?.allowedTechniques
+)
+
+console.log(
+  'AREAS RECIBIDAS:',
+  selectedProduct?.availableSides
+)
   const sizes = Array.isArray(selectedProduct?.sizes)
     ? selectedProduct.sizes
     : []

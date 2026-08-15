@@ -3,19 +3,19 @@ import { useLocation } from 'react-router-dom'
 import useInventoryProducts from '../hooks/orders/useInventoryProducts'
 
 import { db, storage } from '../firebase/config'
-import {
-  collection,
-  addDoc,
-  doc,
-  updateDoc,
-  getDocs
-} from 'firebase/firestore'
+
 import {
   collection,
   addDoc,
   doc,
   updateDoc
 } from 'firebase/firestore'
+
+import {
+  ref,
+  uploadString,
+  getDownloadURL
+} from 'firebase/storage'
 
 import GarmentEditor from '../components/GarmentEditor'
 import CustomerGarmentForm from '../components/orders/CustomerGarmentForm'

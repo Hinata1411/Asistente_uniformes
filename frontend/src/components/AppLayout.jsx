@@ -31,53 +31,93 @@ function AppLayout({ children }) {
         </div>
 
         <nav className="sidebar-menu">
+          
           {role === 'admin' && (
-            <Link
-              to="/dashboard"
-              className={`sidebar-link ${
-                isActive('/dashboard') ? 'active' : ''
-              }`}
-            >
-              <span className="sidebar-icon">⌂</span>
-              Dashboard
-            </Link>
+            <>
+              <Link
+                to="/dashboard"
+                className={`sidebar-link ${
+                  isActive('/dashboard') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">⌂</span>
+                Dashboard
+              </Link>
+
+              <div className="sidebar-section-title">
+                Pedidos
+              </div>
+
+              <Link
+                to="/crearpedido"
+                className={`sidebar-link ${
+                  isActive('/crearpedido') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">＋</span>
+                Crear pedido
+              </Link>
+
+              <Link
+                to="/historial"
+                className={`sidebar-link ${
+                  isActive('/historial') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">▤</span>
+                Historial
+              </Link>
+
+              <Link
+                to="/productos"
+                className={`sidebar-link ${
+                  isActive('/productos') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">▦</span>
+                Productos
+              </Link>
+            </>
           )}
 
-          <div className="sidebar-section-title">
-            Pedidos
-          </div>
+          {role === 'empleado' && (
+            <>
+              <Link
+                to="/empleado"
+                className={`sidebar-link ${
+                  isActive('/empleado') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">⌂</span>
+                Inicio
+              </Link>
 
-          <Link
-            to="/crearpedido"
-            className={`sidebar-link ${
-              isActive('/crearpedido') ? 'active' : ''
-            }`}
-          >
-            <span className="sidebar-icon">＋</span>
-            Crear pedido
-          </Link>
+              <div className="sidebar-section-title">
+                Operación
+              </div>
 
-          {role === 'admin' && (
-            <Link
-              to="/historial"
-              className={`sidebar-link ${
-                isActive('/historial') ? 'active' : ''
-              }`}
-            >
-              <span className="sidebar-icon">▤</span>
-              Historial
-            </Link>
+              <Link
+                to="/crearpedido"
+                className={`sidebar-link ${
+                  isActive('/crearpedido') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">＋</span>
+                Crear pedido
+              </Link>
+
+              <Link
+                to="/historial"
+                className={`sidebar-link ${
+                  isActive('/historial') ? 'active' : ''
+                }`}
+              >
+                <span className="sidebar-icon">▤</span>
+                Pedidos
+              </Link>
+            </>
           )}
 
-          <Link
-            to="/productos"
-            className={`sidebar-link ${
-              isActive('/productos') ? 'active' : ''
-            }`}
-          >
-            <span className="sidebar-icon">▦</span>
-            Productos
-          </Link>
         </nav>
 
         <div className="sidebar-footer">

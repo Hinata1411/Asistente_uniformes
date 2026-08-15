@@ -108,6 +108,15 @@ function App() {
         />
 
         <Route
+          path="/productos/editar/:id"
+          element={
+            <ProtectedLayout allowedRoles={['admin']}>
+              <CreateProductPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
           path="/"
           element={<RoleRedirect />}
         />

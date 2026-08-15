@@ -7,7 +7,10 @@ import {
   collection,
   getDocs,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc,
+  query,
+  where
 } from 'firebase/firestore'
 
 import { db } from '../firebase/config'
@@ -121,6 +124,60 @@ function ProductsPage() {
       )
     }
   }
+
+  const handleDeleteProduct = async (product) => {
+    const confirmed = window.confirm(
+      `¿Deseas eliminar definitivamente "${product.name}"?`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const ordersQuery = query(
+        collection(db, 'orders'),
+        where('productId', '==', product.id)
+      )
+
+      const ordersSnapshot = await getDocs(
+        ordersQuery
+      )
+
+      if (!ordersSnapshot.empty) {
+        alert(
+          'Este producto ya está asociado a uno o más pedidos. No puede eliminarse definitivamente; puedes desactivarlo.'
+        )
+
+        return
+      }
+
+      await deleteDoc(
+        doc(db, 'products', product.id)
+      )
+
+      setProducts((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== product.id
+        )
+      )
+
+      alert(
+        'Producto eliminado definitivamente'
+      )
+    } catch (error) {
+      console.error(
+        'Error eliminando producto:',
+        error
+      )
+
+      alert(
+        'No se pudo eliminar el producto'
+      )
+    }
+  }
+
   return (
     <div className="products-page">
 
@@ -309,7 +366,7 @@ function ProductsPage() {
                       )
                     }
                   >
-                    Editar producto
+                    Editar
                   </button>
 
                   <button
@@ -327,6 +384,17 @@ function ProductsPage() {
                       ? 'Activar'
                       : 'Desactivar'}
                   </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() =>
+                      handleDeleteProduct(product)
+                    }
+                  >
+                    Eliminar
+                  </button>
+
                 </div>
                 
                 <div className="technique-list">

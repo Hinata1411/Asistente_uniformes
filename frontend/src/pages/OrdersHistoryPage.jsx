@@ -35,22 +35,6 @@ function OrdersHistoryPage() {
     loadOrders()
   }, [])
 
-  const getAssistantRecommendation = (order) => {
-    if (order.technique === 'DTF') {
-      return 'Recomendado para diseños con varios colores y detalles.'
-    }
-
-    if (order.technique === 'Bordado') {
-      return 'Ideal para logos pequeños, uniformes y acabados profesionales.'
-    }
-
-    if (order.technique === 'Sublimación') {
-      return 'Ideal para prendas claras o diseños completos.'
-    }
-
-    return 'Seleccione una técnica para recibir recomendación.'
-  }
-
   const handleChangeStatus = async (orderId, newStatus) => {
     try {
       await updateDoc(doc(db, 'orders', orderId), {
@@ -123,45 +107,184 @@ function OrdersHistoryPage() {
   const handleDownloadOrderPDF = (order) => {
     const docPDF = new jsPDF()
 
-    docPDF.setFontSize(18)
-    docPDF.text('Pedido personalizado', 20, 20)
+    let y = 20
 
-    docPDF.setFontSize(12)
-    docPDF.text(`Cliente: ${order.customerName || 'No definido'}`, 20, 40)
-    docPDF.text(`Teléfono: ${order.phone || 'No definido'}`, 20, 50)
-    docPDF.text(`Prenda: ${order.product || 'No definida'}`, 20, 60)
-    docPDF.text(`Talla: ${order.size || 'No definida'}`, 20, 70)
-    docPDF.text(`Cantidad: ${order.quantity || 0}`, 20, 80)
-    docPDF.text(`Técnica: ${order.technique || 'No definida'}`, 20, 90)
-    docPDF.text(`Estado: ${order.status || 'pendiente_aprobacion'}`, 20, 100)
+    const addText = (text, options = {}) => {
+      const {
+        fontSize = 12,
+        spacing = 7,
+        maxWidth = 170
+      } = options
 
-    docPDF.text('Recomendación del asistente:', 20, 115)
-    docPDF.text(getAssistantRecommendation(order), 20, 125, {
-      maxWidth: 170
+      docPDF.setFontSize(fontSize)
+
+      const lines = docPDF.splitTextToSize(
+        String(text),
+        maxWidth
+      )
+
+      docPDF.text(lines, 20, y)
+
+      y += lines.length * spacing
+    }
+
+    // =========================
+    // ENCABEZADO
+    // =========================
+
+    addText('Pedido personalizado', {
+      fontSize: 18,
+      spacing: 9
     })
 
+    y += 8
+
+    // =========================
+    // DATOS DEL PEDIDO
+    // =========================
+
+    addText(
+      `Cliente: ${order.customerName || 'No definido'}`
+    )
+
+    addText(
+      `Teléfono: ${order.phone || 'No definido'}`
+    )
+
+    addText(
+      `Prenda: ${
+        order.productName ||
+        order.product ||
+        order.productType ||
+        'No definida'
+      }`
+    )
+
+    addText(
+      `Talla: ${order.size || 'No definida'}`
+    )
+
+    addText(
+      `Cantidad: ${order.quantity || 0}`
+    )
+
+    addText(
+      `Técnica: ${order.technique || 'No definida'}`
+    )
+
+    addText(
+      `Estado: ${order.status || 'pendiente_aprobacion'}`
+    )
+
+    y += 6
+
+    // =========================
+    // VALIDACIÓN IA
+    // =========================
+
+    addText(
+      'Validación del asistente inteligente:',
+      {
+        fontSize: 14,
+        spacing: 8
+      }
+    )
+
+    const aiValidation = order.aiValidation
+
+    if (aiValidation) {
+      addText(
+        `Nivel de riesgo: ${
+          aiValidation.riskLevel || 'No definido'
+        }`
+      )
+
+      addText(
+        `Compatibilidad técnica: ${
+          aiValidation.techniqueCompatibility ||
+          'No disponible'
+        }`
+      )
+
+      addText(
+        `Recomendación: ${
+          aiValidation.recommendation ||
+          'No disponible'
+        }`
+      )
+
+      addText(
+        `Nota para producción: ${
+          aiValidation.productionNote ||
+          'No disponible'
+        }`
+      )
+
+      const warnings =
+        Array.isArray(aiValidation.warnings) &&
+        aiValidation.warnings.length > 0
+          ? aiValidation.warnings
+              .map((warning) => `• ${warning}`)
+              .join('\n')
+          : 'Sin advertencias registradas.'
+
+      addText(`Advertencias:\n${warnings}`)
+
+      if (order.aiValidatedAt) {
+        addText(
+          `Fecha de validación: ${new Date(
+            order.aiValidatedAt
+          ).toLocaleString()}`
+        )
+      }
+    } else {
+      addText(
+        'Este pedido no tiene una validación almacenada.'
+      )
+    }
+
+    y += 6
+
+    // =========================
+    // VISTA PREVIA
+    // =========================
+
     if (order.previewBase64) {
-      docPDF.text('Vista previa:', 20, 145)
+      addText('Vista previa:')
 
       docPDF.addImage(
         order.previewBase64,
         'PNG',
         20,
-        155,
+        y,
         80,
         95
       )
+
+      y += 105
     } else {
-      docPDF.text('Vista previa no disponible para este pedido.', 20, 145)
+      addText(
+        'Vista previa no disponible para este pedido.'
+      )
     }
+
+    // =========================
+    // ANULACIÓN
+    // =========================
 
     if (order.status === 'anulado') {
-      docPDF.text(`Motivo de anulación: ${order.cancelReason || 'No definido'}`, 20, 260, {
-        maxWidth: 170
-      })
+      y += 5
+
+      addText(
+        `Motivo de anulación: ${
+          order.cancelReason || 'No definido'
+        }`
+      )
     }
 
-    docPDF.save(`pedido-${order.customerName || 'cliente'}.pdf`)
+    docPDF.save(
+      `pedido-${order.customerName || 'cliente'}.pdf`
+    )
   }
 
   const filteredOrders = orders.filter((o) => {

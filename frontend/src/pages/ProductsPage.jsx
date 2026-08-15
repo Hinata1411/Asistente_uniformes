@@ -89,6 +89,38 @@ function ProductsPage() {
     }
   }
 
+  const handleToggleActive = async (product) => {
+    const newActiveStatus = product.active === false
+
+    try {
+      await updateDoc(
+        doc(db, 'products', product.id),
+        {
+          active: newActiveStatus
+        }
+      )
+
+      setProducts((prev) =>
+        prev.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                active: newActiveStatus
+              }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error(
+        'Error actualizando estado del producto:',
+        error
+      )
+
+      alert(
+        'No se pudo actualizar el estado del producto'
+      )
+    }
+  }
   return (
     <div className="products-page">
 
@@ -144,6 +176,17 @@ function ProductsPage() {
                   <h3>
                     {product.name}
                   </h3>
+                  <span
+                    className={`badge ${
+                      product.active === false
+                        ? 'bg-secondary'
+                        : 'bg-success'
+                    }`}
+                  >
+                    {product.active === false
+                      ? 'Inactivo'
+                      : 'Activo'}
+                  </span>
                 </div>
 
                 <span
@@ -251,7 +294,7 @@ function ProductsPage() {
                   Técnicas permitidas
                 </span>
 
-                <div className="d-flex justify-content-end mt-3">
+                <div className="d-flex justify-content-end gap-2 mt-3">
                   <button
                     type="button"
                     className="btn btn-outline-primary btn-sm"
@@ -267,6 +310,22 @@ function ProductsPage() {
                     }
                   >
                     Editar producto
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${
+                      product.active === false
+                        ? 'btn-outline-success'
+                        : 'btn-outline-danger'
+                    }`}
+                    onClick={() =>
+                      handleToggleActive(product)
+                    }
+                  >
+                    {product.active === false
+                      ? 'Activar'
+                      : 'Desactivar'}
                   </button>
                 </div>
                 

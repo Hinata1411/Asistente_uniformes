@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import {
+  Link,
+  useNavigate
+} from 'react-router-dom'
 import {
   collection,
   getDocs,
@@ -11,6 +14,7 @@ import { db } from '../firebase/config'
 import './ProductsPage.css'
 
 function ProductsPage() {
+  const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -247,6 +251,25 @@ function ProductsPage() {
                   Técnicas permitidas
                 </span>
 
+                <div className="d-flex justify-content-end mt-3">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm"
+                    onClick={() =>
+                      navigate(
+                        `/productos/editar/${product.id}`,
+                        {
+                          state: {
+                            productToEdit: product
+                          }
+                        }
+                      )
+                    }
+                  >
+                    Editar producto
+                  </button>
+                </div>
+                
                 <div className="technique-list">
                   {product.allowedTechniques?.length > 0 ? (
                     product.allowedTechniques.map(

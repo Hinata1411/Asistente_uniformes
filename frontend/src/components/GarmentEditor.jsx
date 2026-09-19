@@ -5,8 +5,21 @@ import {
   Transformer,
   Text
 } from 'react-konva'
-import { useEffect, useRef, useState } from 'react'
+
+import {
+  useEffect,
+  useRef,
+  useState,
+  forwardRef,
+  useImperativeHandle
+} from 'react'
+
+import { notify } from '../services/toastStore'
 import './GarmentEditor.css'
+
+/* =========================================================
+   CARGAR IMÁGENES
+========================================================= */
 
 function useImage(src) {
   const [image, setImage] = useState(null)
@@ -17,33 +30,87 @@ function useImage(src) {
       return
     }
 
+    let cancelled = false
+
     const img = new window.Image()
+
+    /*
+      IMPORTANTE:
+      Las imágenes provenientes de Firebase Storage
+      deben cargarse con crossOrigin antes de asignar src.
+
+      Esto evita que Konva contamine el canvas y permite
+      utilizar stage.toDataURL().
+    */
+    if (
+      src.startsWith('http://') ||
+      src.startsWith('https://')
+    ) {
+      img.crossOrigin = 'anonymous'
+    }
+
+    img.onload = () => {
+      if (!cancelled) {
+        setImage(img)
+      }
+    }
+
+    img.onerror = (error) => {
+      if (!cancelled) {
+        console.error(
+          'Error cargando imagen en el editor:',
+          src,
+          error
+        )
+
+        setImage(null)
+      }
+    }
+
     img.src = src
-    img.onload = () => setImage(img)
 
     return () => {
-      if (src.startsWith('blob:')) {
-        URL.revokeObjectURL(src)
-      }
+      cancelled = true
     }
   }, [src])
 
   return image
 }
 
-function ImageElement({ element, isSelected, onSelect, onChange }) {
+/* =========================================================
+   ELEMENTO IMAGEN
+========================================================= */
+
+function ImageElement({
+  element,
+  isSelected,
+  onSelect,
+  onChange
+}) {
   const image = useImage(element.src)
+
   const shapeRef = useRef(null)
   const trRef = useRef(null)
 
   useEffect(() => {
-    if (isSelected && trRef.current && shapeRef.current) {
-      trRef.current.nodes([shapeRef.current])
-      trRef.current.getLayer().batchDraw()
+    if (
+      isSelected &&
+      trRef.current &&
+      shapeRef.current
+    ) {
+      trRef.current.nodes([
+        shapeRef.current
+      ])
+
+      trRef.current
+        .getLayer()
+        .batchDraw()
     }
   }, [isSelected])
 
-  if (!image) return null
+  if (!image) {
+    return null
+  }
 
   return (
     <>
@@ -65,19 +132,40 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
           })
         }}
         onTransformEnd={() => {
-          const node = shapeRef.current
-          const scaleX = node.scaleX()
-          const scaleY = node.scaleY()
+          const node =
+            shapeRef.current
+
+          const scaleX =
+            node.scaleX()
+
+          const scaleY =
+            node.scaleY()
 
           node.scaleX(1)
           node.scaleY(1)
 
           onChange({
             ...element,
-            x: node.x(),
-            y: node.y(),
-            width: Math.max(30, node.width() * scaleX),
-            height: Math.max(30, node.height() * scaleY)
+
+            x:
+              node.x(),
+
+            y:
+              node.y(),
+
+            width:
+              Math.max(
+                30,
+                node.width() *
+                  scaleX
+              ),
+
+            height:
+              Math.max(
+                30,
+                node.height() *
+                  scaleY
+              )
           })
         }}
       />
@@ -86,9 +174,39 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
         <Transformer
           ref={trRef}
           rotateEnabled={false}
-          boundBoxFunc={(oldBox, newBox) => {
-            if (newBox.width < 30 || newBox.height < 30) return oldBox
-            if (newBox.width > 350 || newBox.height > 350) return oldBox
+          keepRatio
+          enabledAnchors={[
+            'top-left',
+            'top-right',
+            'bottom-left',
+            'bottom-right'
+          ]}
+          anchorSize={20}
+          anchorCornerRadius={10}
+          anchorFill="#ffffff"
+          anchorStroke="#ffc603"
+          anchorStrokeWidth={2.5}
+          borderStroke="#ffc603"
+          borderStrokeWidth={2}
+          borderDash={[6, 3]}
+          boundBoxFunc={(
+            oldBox,
+            newBox
+          ) => {
+            if (
+              newBox.width < 25 ||
+              newBox.height < 25
+            ) {
+              return oldBox
+            }
+
+            if (
+              newBox.width > 420 ||
+              newBox.height > 420
+            ) {
+              return oldBox
+            }
+
             return newBox
           }}
         />
@@ -97,14 +215,35 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
   )
 }
 
-function TextElement({ element, isSelected, onSelect, onChange }) {
-  const textRef = useRef(null)
-  const trRef = useRef(null)
+/* =========================================================
+   ELEMENTO TEXTO
+========================================================= */
+
+function TextElement({
+  element,
+  isSelected,
+  onSelect,
+  onChange
+}) {
+  const textRef =
+    useRef(null)
+
+  const trRef =
+    useRef(null)
 
   useEffect(() => {
-    if (isSelected && trRef.current && textRef.current) {
-      trRef.current.nodes([textRef.current])
-      trRef.current.getLayer().batchDraw()
+    if (
+      isSelected &&
+      trRef.current &&
+      textRef.current
+    ) {
+      trRef.current.nodes([
+        textRef.current
+      ])
+
+      trRef.current
+        .getLayer()
+        .batchDraw()
     }
   }, [isSelected])
 
@@ -115,31 +254,56 @@ function TextElement({ element, isSelected, onSelect, onChange }) {
         text={element.text}
         x={element.x}
         y={element.y}
-        fontSize={element.fontSize}
-        fill={element.color}
-        fontStyle={element.bold ? 'bold' : 'normal'}
+        fontSize={
+          element.fontSize
+        }
+        fill={
+          element.color
+        }
+        fontStyle={
+          element.bold
+            ? 'bold'
+            : 'normal'
+        }
         draggable
         onClick={onSelect}
         onTap={onSelect}
         onDragEnd={(e) => {
           onChange({
             ...element,
-            x: e.target.x(),
-            y: e.target.y()
+
+            x:
+              e.target.x(),
+
+            y:
+              e.target.y()
           })
         }}
         onTransformEnd={() => {
-          const node = textRef.current
-          const scaleX = node.scaleX()
+          const node =
+            textRef.current
+
+          const scaleX =
+            node.scaleX()
 
           node.scaleX(1)
           node.scaleY(1)
 
           onChange({
             ...element,
-            x: node.x(),
-            y: node.y(),
-            fontSize: Math.max(18, element.fontSize * scaleX)
+
+            x:
+              node.x(),
+
+            y:
+              node.y(),
+
+            fontSize:
+              Math.max(
+                18,
+                element.fontSize *
+                  scaleX
+              )
           })
         }}
       />
@@ -148,292 +312,882 @@ function TextElement({ element, isSelected, onSelect, onChange }) {
         <Transformer
           ref={trRef}
           rotateEnabled={false}
+          keepRatio
           enabledAnchors={[
             'top-left',
             'top-right',
             'bottom-left',
             'bottom-right'
           ]}
+          anchorSize={20}
+          anchorCornerRadius={10}
+          anchorFill="#ffffff"
+          anchorStroke="#ffc603"
+          anchorStrokeWidth={2.5}
+          borderStroke="#ffc603"
+          borderStrokeWidth={2}
+          borderDash={[6, 3]}
         />
       )}
     </>
   )
 }
 
-function GarmentEditor({
+/* =========================================================
+   EDITOR PRINCIPAL
+========================================================= */
+
+const GarmentEditor = forwardRef(function GarmentEditor({
   product,
+  customerGarmentImage,
+  customerGarment,
   customizationSide,
+  initialElements,
   onPreviewChange,
   onElementsChange,
   onSave
-}) {
-  const frontImage = useImage(product?.images?.frente)
-  const backImage = useImage(product?.images?.espalda)
+}, ref) {
+  /*
+    El producto de inventario ya viene normalizado:
 
-  const stageFrontRef = useRef(null)
-  const stageBackRef = useRef(null)
+    images.frente
+    images.espalda
+  */
 
-  const [selectedId, setSelectedId] = useState(null)
-  const [elements, setElements] = useState([])
+  const baseFrontImage =
+    product?.images?.frente ||
+    customerGarmentImage ||
+    ''
+
+  const baseBackImage =
+    product?.images?.espalda ||
+    customerGarmentImage ||
+    ''
+
+  const frontImage =
+    useImage(
+      baseFrontImage
+    )
+
+  const backImage =
+    useImage(
+      baseBackImage
+    )
+
+  const hasGarment =
+    Boolean(
+      product ||
+      customerGarmentImage
+    )
+
+  const stageFrontRef =
+    useRef(null)
+
+  const stageBackRef =
+    useRef(null)
+
+  const [
+    selectedId,
+    setSelectedId
+  ] = useState(null)
+
+  const [
+    elements,
+    setElements
+  ] = useState([])
+
+  /* =======================================================
+     CARGAR PERSONALIZACIÓN DE UN PEDIDO EXISTENTE
+     (edición): el canvas arranca vacío, así que si venimos
+     a editar un pedido que ya tenía textos/imágenes, los
+     recuperamos aquí una sola vez.
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      Array.isArray(initialElements) &&
+      initialElements.length > 0
+    ) {
+      setElements(initialElements)
+    }
+  }, [initialElements])
+
+  /* =======================================================
+     COMUNICAR ELEMENTOS AL PADRE
+  ======================================================= */
 
   useEffect(() => {
     if (onElementsChange) {
-      onElementsChange(elements)
+      onElementsChange(
+        elements
+      )
     }
-  }, [elements])
+  }, [
+    elements,
+    onElementsChange
+  ])
 
-  const selectedElement = elements.find((el) => el.id === selectedId)
+  const selectedElement =
+    elements.find(
+      (element) =>
+        element.id ===
+        selectedId
+    )
 
   const showFront =
-    customizationSide === 'frente' || customizationSide === 'ambos'
+    customizationSide ===
+      'frente' ||
+    customizationSide ===
+      'ambos'
 
   const showBack =
-    customizationSide === 'espalda' || customizationSide === 'ambos'
+    customizationSide ===
+      'espalda' ||
+    customizationSide ===
+      'ambos'
 
-  const updateElement = (newAttrs) => {
-    setElements((prev) =>
-      prev.map((el) => (el.id === newAttrs.id ? newAttrs : el))
+  /* =======================================================
+     ACTUALIZAR ELEMENTOS
+  ======================================================= */
+
+  const updateElement = (
+    newAttrs
+  ) => {
+    setElements(
+      (prev) =>
+        prev.map(
+          (element) =>
+            element.id ===
+            newAttrs.id
+              ? newAttrs
+              : element
+        )
     )
   }
 
-  const updateSelectedElement = (changes) => {
-    if (!selectedElement) return
+  const updateSelectedElement =
+    (changes) => {
+      if (
+        !selectedElement
+      ) {
+        return
+      }
 
-    updateElement({
-      ...selectedElement,
-      ...changes
-    })
-  }
+      updateElement({
+        ...selectedElement,
+        ...changes
+      })
+    }
 
-  const addImage = (src) => {
-    const id = crypto.randomUUID()
+  /* =======================================================
+     AGREGAR IMAGEN
+  ======================================================= */
+
+  const addImage = (
+    src
+  ) => {
+    const id =
+      crypto.randomUUID()
 
     const newImage = {
       id,
-      type: 'image',
+
+      type:
+        'image',
+
       src,
-      x: 180,
-      y: 180,
-      width: 120,
-      height: 120
+
+      x:
+        180,
+
+      y:
+        180,
+
+      width:
+        120,
+
+      height:
+        120
     }
 
-    setElements((prev) => [...prev, newImage])
+    setElements(
+      (prev) => [
+        ...prev,
+        newImage
+      ]
+    )
+
     setSelectedId(id)
   }
 
+  /* =======================================================
+     AGREGAR TEXTO
+  ======================================================= */
+
   const addText = () => {
-    const id = crypto.randomUUID()
+    const id =
+      crypto.randomUUID()
 
     const newText = {
       id,
-      type: 'text',
-      text: 'NUEVO TEXTO',
-      x: 160,
-      y: 120,
-      fontSize: 42,
-      color: '#ffffff',
-      bold: true
+
+      type:
+        'text',
+
+      text:
+        'NUEVO TEXTO',
+
+      x:
+        160,
+
+      y:
+        120,
+
+      fontSize:
+        42,
+
+      color:
+        '#ffffff',
+
+      bold:
+        true
     }
 
-    setElements((prev) => [...prev, newText])
+    setElements(
+      (prev) => [
+        ...prev,
+        newText
+      ]
+    )
+
     setSelectedId(id)
   }
 
-  const deleteSelected = () => {
-    if (!selectedId) return
+  /* =======================================================
+     ELIMINAR
+  ======================================================= */
 
-    setElements((prev) => prev.filter((el) => el.id !== selectedId))
-    setSelectedId(null)
-  }
+  const deleteSelected =
+    () => {
+      if (!selectedId) {
+        return
+      }
 
-  const clearSelection = () => {
-    setSelectedId(null)
-  }
+      setElements(
+        (prev) =>
+          prev.filter(
+            (element) =>
+              element.id !==
+              selectedId
+          )
+      )
 
-  const handleUpload = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+      setSelectedId(null)
+    }
 
-    const url = URL.createObjectURL(file)
+  const clearSelection =
+    () => {
+      setSelectedId(null)
+    }
+
+  /* =======================================================
+     SUBIR LOGO / DISEÑO LOCAL
+  ======================================================= */
+
+  const handleUpload = (
+    e
+  ) => {
+    const file =
+      e.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    if (
+      !file.type.startsWith(
+        'image/'
+      )
+    ) {
+      notify(
+        'Selecciona un archivo de imagen válido.',
+        'warning'
+      )
+
+      e.target.value = ''
+      return
+    }
+
+    const url =
+      URL.createObjectURL(
+        file
+      )
+
     addImage(url)
 
     e.target.value = ''
   }
 
-  const getStagePreview = (stageRef) => {
-    if (!stageRef.current) return null
+  /* =======================================================
+     GENERAR DATA URL DEL STAGE
+  ======================================================= */
 
-    return stageRef.current.toDataURL({
-      pixelRatio: 2
-    })
-  }
-
-  const mergePreviews = (frontPreview, backPreview) => {
-    if (frontPreview && !backPreview) return frontPreview
-    if (!frontPreview && backPreview) return backPreview
-    if (!frontPreview && !backPreview) return null
-
-    const mergedCanvas = document.createElement('canvas')
-    mergedCanvas.width = 1000
-    mergedCanvas.height = 600
-
-    const ctx = mergedCanvas.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, mergedCanvas.width, mergedCanvas.height)
-
-    return new Promise((resolve) => {
-      const frontImg = new window.Image()
-      const backImg = new window.Image()
-
-      let loaded = 0
-
-      const draw = () => {
-        loaded++
-
-        if (loaded === 2) {
-          ctx.drawImage(frontImg, 0, 0, 500, 600)
-          ctx.drawImage(backImg, 500, 0, 500, 600)
-          resolve(mergedCanvas.toDataURL('image/png'))
-        }
-      }
-
-      frontImg.onload = draw
-      backImg.onload = draw
-
-      frontImg.src = frontPreview
-      backImg.src = backPreview
-    })
-  }
-
-  const generatePreview = async (clearSelected = false) => {
-  if (clearSelected) {
-    setSelectedId(null)
-    await new Promise((resolve) => setTimeout(resolve, 80))
-  }
-
-    const frontPreview = showFront ? getStagePreview(stageFrontRef) : null
-    const backPreview = showBack ? getStagePreview(stageBackRef) : null
-
-    const preview =
-      customizationSide === 'ambos'
-        ? await mergePreviews(frontPreview, backPreview)
-        : frontPreview || backPreview
-
-    if (preview && onPreviewChange) {
-      onPreviewChange(preview)
+  const getStagePreview = (
+    stageRef
+  ) => {
+    if (
+      !stageRef.current
+    ) {
+      return null
     }
 
-    return preview
+    try {
+      return (
+        stageRef.current
+          .toDataURL({
+            pixelRatio:
+              2
+          })
+      )
+    } catch (error) {
+      console.error(
+        'Error generando vista previa del canvas:',
+        error
+      )
+
+      return null
+    }
   }
+
+  /* =======================================================
+     UNIR FRENTE + ESPALDA
+  ======================================================= */
+
+  const mergePreviews = (
+    frontPreview,
+    backPreview
+  ) => {
+    if (
+      frontPreview &&
+      !backPreview
+    ) {
+      return frontPreview
+    }
+
+    if (
+      !frontPreview &&
+      backPreview
+    ) {
+      return backPreview
+    }
+
+    if (
+      !frontPreview &&
+      !backPreview
+    ) {
+      return null
+    }
+
+    const mergedCanvas =
+      document.createElement(
+        'canvas'
+      )
+
+    mergedCanvas.width =
+      1000
+
+    mergedCanvas.height =
+      600
+
+    const ctx =
+      mergedCanvas.getContext(
+        '2d'
+      )
+
+    ctx.fillStyle =
+      '#ffffff'
+
+    ctx.fillRect(
+      0,
+      0,
+      mergedCanvas.width,
+      mergedCanvas.height
+    )
+
+    return new Promise(
+      (
+        resolve,
+        reject
+      ) => {
+        const frontImg =
+          new window.Image()
+
+        const backImg =
+          new window.Image()
+
+        let loaded = 0
+
+        const draw =
+          () => {
+            loaded++
+
+            if (
+              loaded === 2
+            ) {
+              try {
+                ctx.drawImage(
+                  frontImg,
+                  0,
+                  0,
+                  500,
+                  600
+                )
+
+                ctx.drawImage(
+                  backImg,
+                  500,
+                  0,
+                  500,
+                  600
+                )
+
+                resolve(
+                  mergedCanvas.toDataURL(
+                    'image/png'
+                  )
+                )
+              } catch (
+                error
+              ) {
+                console.error(
+                  'Error combinando vistas previas:',
+                  error
+                )
+
+                reject(
+                  error
+                )
+              }
+            }
+          }
+
+        frontImg.onload =
+          draw
+
+        backImg.onload =
+          draw
+
+        frontImg.onerror =
+          reject
+
+        backImg.onerror =
+          reject
+
+        /*
+          Estas vistas ya son data URLs
+          generadas internamente.
+        */
+
+        frontImg.src =
+          frontPreview
+
+        backImg.src =
+          backPreview
+      }
+    )
+  }
+
+  /* =======================================================
+     GENERAR PREVIEW
+  ======================================================= */
+
+  const generatePreview =
+    async (
+      clearSelected =
+        false
+    ) => {
+      try {
+        if (
+          clearSelected
+        ) {
+          setSelectedId(
+            null
+          )
+
+          /*
+            Esperar a que React quite
+            el Transformer antes de
+            exportar el canvas.
+          */
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                100
+              )
+          )
+        }
+
+        const frontPreview =
+          showFront
+            ? getStagePreview(
+                stageFrontRef
+              )
+            : null
+
+        const backPreview =
+          showBack
+            ? getStagePreview(
+                stageBackRef
+              )
+            : null
+
+        let preview = null
+
+        if (
+          customizationSide ===
+          'ambos'
+        ) {
+          if (
+            !frontPreview ||
+            !backPreview
+          ) {
+            console.error(
+              'No se pudieron generar ambas vistas.'
+            )
+
+            return null
+          }
+
+          preview =
+            await mergePreviews(
+              frontPreview,
+              backPreview
+            )
+        } else {
+          preview =
+            frontPreview ||
+            backPreview
+        }
+
+        if (
+          preview &&
+          onPreviewChange
+        ) {
+          onPreviewChange(
+            preview
+          )
+        }
+
+        return preview
+      } catch (error) {
+        console.error(
+          'Error generando vista previa:',
+          error
+        )
+
+        return null
+      }
+    }
+
+  /* =======================================================
+     ACTUALIZACIÓN AUTOMÁTICA DE PREVIEW
+  ======================================================= */
 
   useEffect(() => {
-    if (!product || !customizationSide) return
-
-    const timer = setTimeout(() => {
-      generatePreview(false)
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [product, customizationSide, elements])
-
-  const handleSave = async () => {
-    if (!product) {
-      alert('Selecciona un producto del inventario')
+    if (
+      !hasGarment ||
+      !customizationSide
+    ) {
       return
     }
 
-    if (!customizationSide) {
-      alert('Selecciona si será frente, espalda o ambos')
+    /*
+      Esperamos a que la imagen base haya cargado.
+    */
+
+    if (
+      showFront &&
+      !frontImage
+    ) {
       return
     }
 
-    const preview = await generatePreview(true)
-
-    if (!preview) {
-      alert('No se pudo generar la vista previa')
+    if (
+      showBack &&
+      !backImage
+    ) {
       return
     }
 
-    if (onSave) {
-      onSave({
-        previewImage: preview,
-        productId: product.id,
-        productName: product.name,
-        productType: product.type,
-        productColor: product.color,
-        customizationSide,
-        elements,
-        createdAt: new Date().toISOString()
-      })
-    }
-  }
+    const timer =
+      setTimeout(
+        () => {
+          generatePreview(
+            false
+          )
+        },
+        300
+      )
 
-  const renderElements = () =>
-    elements.map((element) => {
-      if (element.type === 'image') {
-        return (
-          <ImageElement
-            key={element.id}
-            element={element}
-            isSelected={element.id === selectedId}
-            onSelect={() => setSelectedId(element.id)}
-            onChange={updateElement}
-          />
+    return () =>
+      clearTimeout(
+        timer
+      )
+  }, [
+    product,
+    customerGarmentImage,
+    customizationSide,
+    elements,
+    frontImage,
+    backImage
+  ])
+
+  /* =======================================================
+     GUARDAR PEDIDO
+  ======================================================= */
+
+  const handleSave =
+    async () => {
+      if (!hasGarment) {
+        notify(
+          'Selecciona un producto o carga una fotografía de la prenda',
+          'warning'
         )
+
+        return
       }
 
-      return (
-        <TextElement
-          key={element.id}
-          element={element}
-          isSelected={element.id === selectedId}
-          onSelect={() => setSelectedId(element.id)}
-          onChange={updateElement}
-        />
+      if (
+        !customizationSide
+      ) {
+        notify(
+          'Selecciona si será frente, espalda o ambos',
+          'warning'
+        )
+
+        return
+      }
+
+      /*
+        Comprobar que la imagen base
+        haya terminado de cargar.
+      */
+
+      if (
+        showFront &&
+        !frontImage
+      ) {
+        notify(
+          'La imagen frontal todavía no ha terminado de cargar.',
+          'warning'
+        )
+
+        return
+      }
+
+      if (
+        showBack &&
+        !backImage
+      ) {
+        notify(
+          'La imagen trasera todavía no ha terminado de cargar.',
+          'warning'
+        )
+
+        return
+      }
+
+      const preview =
+        await generatePreview(
+          true
+        )
+
+      if (!preview) {
+        notify(
+          'No se pudo generar la vista previa',
+          'error'
+        )
+
+        return
+      }
+
+      if (onSave) {
+        await onSave({
+          previewImage:
+            preview,
+
+          productId:
+            product?.id ||
+            null,
+
+          productName:
+            product?.name ||
+            customerGarment?.type ||
+            'Prenda proporcionada por el cliente',
+
+          productType:
+            product?.type ||
+            customerGarment?.type ||
+            'otro',
+
+          productColor:
+            product?.color ||
+            customerGarment?.color ||
+            '',
+
+          customizationSide,
+
+          elements,
+
+          createdAt:
+            new Date()
+              .toISOString()
+        })
+      }
+    }
+
+  // Permite disparar el guardado desde un botón fuera de este
+  // componente (ej. el botón fijo de "Guardar pedido" arriba).
+  useImperativeHandle(ref, () => ({
+    triggerSave: handleSave
+  }))
+
+  /* =======================================================
+     RENDER ELEMENTOS
+  ======================================================= */
+
+  const renderElements =
+    () =>
+      elements.map(
+        (element) => {
+          if (
+            element.type ===
+            'image'
+          ) {
+            return (
+              <ImageElement
+                key={
+                  element.id
+                }
+                element={
+                  element
+                }
+                isSelected={
+                  element.id ===
+                  selectedId
+                }
+                onSelect={() =>
+                  setSelectedId(
+                    element.id
+                  )
+                }
+                onChange={
+                  updateElement
+                }
+              />
+            )
+          }
+
+          return (
+            <TextElement
+              key={
+                element.id
+              }
+              element={
+                element
+              }
+              isSelected={
+                element.id ===
+                selectedId
+              }
+              onSelect={() =>
+                setSelectedId(
+                  element.id
+                )
+              }
+              onChange={
+                updateElement
+              }
+            />
+          )
+        }
       )
-    })
+
+  /* =========================================================
+     UI
+  ========================================================= */
 
   return (
     <div className="garment-editor">
+
       <div className="card-header text-center">
         Vista previa del uniforme
       </div>
 
       <div className="card-body">
-        {!product && (
+
+        {!hasGarment && (
           <div className="alert alert-info">
-            Selecciona un producto del inventario para mostrar la vista previa.
+            Selecciona un producto del inventario o carga una fotografía
+            de la prenda proporcionada por el cliente.
           </div>
         )}
 
-        {product && (
+        {hasGarment && (
           <>
+
             <div className="mb-3 text-center">
-              <strong>{product.name}</strong>
+              <strong>
+                {product
+                  ? product.name
+                  : customerGarment?.type ||
+                    'Prenda del cliente'}
+              </strong>
+
               <br />
+
               <small className="text-muted">
-                Color: {product.color} | Stock: {product.stock}
+                {product
+                  ? `Color: ${product.color} | Stock: ${product.stock}`
+                  : `Color: ${
+                      customerGarment?.color ||
+                      'No especificado'
+                    } | Prenda proporcionada por el cliente`}
               </small>
             </div>
 
             {!customizationSide && (
               <div className="alert alert-warning">
-                Selecciona si la personalización será al frente, atrás o ambas.
+                Selecciona si la personalización será al frente,
+                atrás o ambas.
               </div>
             )}
 
+            {/* HERRAMIENTAS */}
+
             <div className="card p-3 mb-3">
-              <h6>Herramientas de personalización</h6>
+              <h6>
+                Herramientas de personalización
+              </h6>
 
               <div className="row g-2 align-items-end">
+
                 <div className="col-md-5">
-                  <label className="form-label">Subir logo o diseño</label>
+                  <label className="form-label">
+                    Subir logo o diseño
+                  </label>
+
                   <input
                     type="file"
                     accept="image/*"
                     className="form-control"
-                    onChange={handleUpload}
+                    onChange={
+                      handleUpload
+                    }
+                    disabled={
+                      !customizationSide
+                    }
                   />
                 </div>
 
@@ -441,8 +1195,12 @@ function GarmentEditor({
                   <button
                     type="button"
                     className="btn btn-dark w-100"
-                    onClick={addText}
-                    disabled={!customizationSide}
+                    onClick={
+                      addText
+                    }
+                    disabled={
+                      !customizationSide
+                    }
                   >
                     Agregar texto
                   </button>
@@ -452,8 +1210,12 @@ function GarmentEditor({
                   <button
                     type="button"
                     className="btn btn-outline-danger w-100"
-                    onClick={deleteSelected}
-                    disabled={!selectedId}
+                    onClick={
+                      deleteSelected
+                    }
+                    disabled={
+                      !selectedId
+                    }
                   >
                     Eliminar seleccionado
                   </button>
@@ -463,43 +1225,67 @@ function GarmentEditor({
                   <button
                     type="button"
                     className="btn btn-outline-secondary w-100"
-                    onClick={clearSelection}
-                    disabled={!selectedId}
+                    onClick={
+                      clearSelection
+                    }
+                    disabled={
+                      !selectedId
+                    }
                   >
                     Deseleccionar
                   </button>
                 </div>
+
               </div>
             </div>
 
-            {selectedElement?.type === 'text' && (
+            {/* EDITAR TEXTO */}
+
+            {selectedElement?.type ===
+              'text' && (
               <div className="card p-3 mb-3 border">
-                <h6>Editar texto seleccionado</h6>
+
+                <h6>
+                  Editar texto seleccionado
+                </h6>
 
                 <div className="row g-2">
+
                   <div className="col-md-5">
-                    <label className="form-label">Texto</label>
+                    <label className="form-label">
+                      Texto
+                    </label>
+
                     <input
                       type="text"
                       className="form-control"
-                      value={selectedElement.text}
+                      value={
+                        selectedElement.text
+                      }
                       onChange={(e) =>
                         updateSelectedElement({
-                          text: e.target.value
+                          text:
+                            e.target.value
                         })
                       }
                     />
                   </div>
 
                   <div className="col-md-2">
-                    <label className="form-label">Color</label>
+                    <label className="form-label">
+                      Color
+                    </label>
+
                     <input
                       type="color"
                       className="form-control form-control-color"
-                      value={selectedElement.color}
+                      value={
+                        selectedElement.color
+                      }
                       onChange={(e) =>
                         updateSelectedElement({
-                          color: e.target.value
+                          color:
+                            e.target.value
                         })
                       }
                     />
@@ -507,17 +1293,27 @@ function GarmentEditor({
 
                   <div className="col-md-3">
                     <label className="form-label">
-                      Tamaño: {selectedElement.fontSize}px
+                      Tamaño:{' '}
+                      {
+                        selectedElement.fontSize
+                      }
+                      px
                     </label>
+
                     <input
                       type="range"
                       className="form-range"
                       min="18"
                       max="110"
-                      value={selectedElement.fontSize}
+                      value={
+                        selectedElement.fontSize
+                      }
                       onChange={(e) =>
                         updateSelectedElement({
-                          fontSize: Number(e.target.value)
+                          fontSize:
+                            Number(
+                              e.target.value
+                            )
                         })
                       }
                     />
@@ -533,46 +1329,71 @@ function GarmentEditor({
                       }`}
                       onClick={() =>
                         updateSelectedElement({
-                          bold: !selectedElement.bold
+                          bold:
+                            !selectedElement.bold
                         })
                       }
                     >
                       Negrita
                     </button>
                   </div>
+
                 </div>
               </div>
             )}
 
-            {selectedElement?.type === 'image' && (
+            {/* IMAGEN SELECCIONADA */}
+
+            {selectedElement?.type ===
+              'image' && (
               <div className="card p-3 mb-3 border">
-                <h6>Imagen seleccionada</h6>
+
+                <h6>
+                  Imagen seleccionada
+                </h6>
+
                 <p className="mb-0 text-muted">
-                  Puedes moverla, cambiar su tamaño desde las esquinas o eliminarla.
+                  Puedes moverla, cambiar su tamaño desde las esquinas
+                  o eliminarla.
                 </p>
+
               </div>
             )}
 
+            {/* CANVAS */}
+
             <div className="d-flex gap-4 flex-wrap justify-content-center">
+
               {showFront && (
                 <div>
-                  <h5 className="text-center">Frente</h5>
+
+                  <h5 className="text-center">
+                    Frente
+                  </h5>
 
                   <Stage
                     width={500}
                     height={600}
-                    ref={stageFrontRef}
+                    ref={
+                      stageFrontRef
+                    }
                     className="border bg-light"
                     onMouseDown={(e) => {
-                      if (e.target === e.target.getStage()) {
+                      if (
+                        e.target ===
+                        e.target.getStage()
+                      ) {
                         clearSelection()
                       }
                     }}
                   >
                     <Layer>
+
                       {frontImage && (
                         <KonvaImage
-                          image={frontImage}
+                          image={
+                            frontImage
+                          }
                           x={50}
                           y={40}
                           width={400}
@@ -581,30 +1402,43 @@ function GarmentEditor({
                       )}
 
                       {renderElements()}
+
                     </Layer>
                   </Stage>
+
                 </div>
               )}
 
               {showBack && (
                 <div>
-                  <h5 className="text-center">Espalda</h5>
+
+                  <h5 className="text-center">
+                    Espalda
+                  </h5>
 
                   <Stage
                     width={500}
                     height={600}
-                    ref={stageBackRef}
+                    ref={
+                      stageBackRef
+                    }
                     className="border bg-light"
                     onMouseDown={(e) => {
-                      if (e.target === e.target.getStage()) {
+                      if (
+                        e.target ===
+                        e.target.getStage()
+                      ) {
                         clearSelection()
                       }
                     }}
                   >
                     <Layer>
+
                       {backImage && (
                         <KonvaImage
-                          image={backImage}
+                          image={
+                            backImage
+                          }
                           x={50}
                           y={40}
                           width={400}
@@ -613,34 +1447,28 @@ function GarmentEditor({
                       )}
 
                       {renderElements()}
+
                     </Layer>
                   </Stage>
+
                 </div>
               )}
+
             </div>
 
-            <div className="text-center mt-4">
-              <button
-                type="button"
-                className="btn btn-outline-dark me-2"
-                onClick={() => generatePreview(true)}
-              >
-                Actualizar vista previa IA
-              </button>
+            {/*
+              El guardado se dispara desde el botón circular
+              fijo de arriba (ver CreateOrderPage). La vista
+              previa ya se actualiza sola cuando cambia el
+              diseño, así que no hace falta un botón manual.
+            */}
 
-              <button
-                type="button"
-                className="btn btn-success"
-                onClick={handleSave}
-              >
-                Guardar pedido
-              </button>
-            </div>
           </>
         )}
+
       </div>
     </div>
   )
-}
+})
 
 export default GarmentEditor

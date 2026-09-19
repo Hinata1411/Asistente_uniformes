@@ -2,14 +2,50 @@ function InventoryGarmentForm({
   form,
   setForm,
   selectedProduct,
-  inventoryProducts,
+  inventoryProducts = [],
   setAiResult,
   setPreviewBase64,
   setEditorElements
 }) {
+  console.log(
+  'PRODUCTO RECIBIDO EN InventoryGarmentForm:',
+  selectedProduct
+)
+
+console.log(
+  'TALLAS RECIBIDAS:',
+  selectedProduct?.sizes
+)
+
+console.log(
+  'TECNICAS RECIBIDAS:',
+  selectedProduct?.allowedTechniques
+)
+
+console.log(
+  'AREAS RECIBIDAS:',
+  selectedProduct?.availableSides
+)
+  const sizes = Array.isArray(selectedProduct?.sizes)
+    ? selectedProduct.sizes
+    : []
+
+  const techniques = Array.isArray(
+    selectedProduct?.allowedTechniques
+  )
+    ? selectedProduct.allowedTechniques
+    : []
+
+  const availableSides = Array.isArray(
+    selectedProduct?.availableSides
+  )
+    ? selectedProduct.availableSides
+    : []
+
   return (
     <>
       <div className="row g-3">
+
         {/* PRODUCTO */}
         <div className="col-12 col-md-6 col-xl-3">
           <label className="form-label">
@@ -20,10 +56,27 @@ function InventoryGarmentForm({
             className="form-select"
             value={form.productId}
             onChange={(e) => {
+              const newProductId = e.target.value
+
+              const newProduct = inventoryProducts.find(
+                (item) => item.id === newProductId
+              )
+
+              /*
+                Cada producto solo maneja una talla (no se
+                soportan variantes), así que la traemos
+                automáticamente en cuanto se elige el producto.
+              */
+              const newProductSizes = Array.isArray(
+                newProduct?.sizes
+              )
+                ? newProduct.sizes
+                : []
+
               setForm({
                 ...form,
-                productId: e.target.value,
-                size: '',
+                productId: newProductId,
+                size: newProductSizes[0] || '',
                 technique: '',
                 customizationSide: ''
               })
@@ -37,14 +90,32 @@ function InventoryGarmentForm({
               Seleccione
             </option>
 
-            {inventoryProducts.map((product) => (
-              <option
-                key={product.id}
-                value={product.id}
-              >
-                {product.name}
-              </option>
-            ))}
+            {inventoryProducts.map((product) => {
+              const productSizes = Array.isArray(product.sizes)
+                ? product.sizes
+                : []
+
+              const stockLabel =
+                Number(product.stock || 0) <= 0
+                  ? 'Agotado'
+                  : `Stock: ${Number(product.stock || 0)}`
+
+              return (
+                <option
+                  key={product.id}
+                  value={product.id}
+                >
+                  {[
+                    product.name || 'Producto sin nombre',
+                    product.color || 'sin color',
+                    productSizes[0]
+                      ? `Talla ${productSizes[0]}`
+                      : 'sin talla',
+                    stockLabel
+                  ].join(' / ')}
+                </option>
+              )
+            })}
           </select>
         </div>
 
@@ -57,7 +128,12 @@ function InventoryGarmentForm({
           <select
             className="form-select"
             value={form.size}
-            disabled={!selectedProduct}
+            /*
+              La talla viene fija del producto (una sola
+              por producto), así que aquí solo se muestra,
+              no se elige.
+            */
+            disabled={!selectedProduct || sizes.length <= 1}
             onChange={(e) => {
               setForm({
                 ...form,
@@ -71,7 +147,7 @@ function InventoryGarmentForm({
               Seleccione
             </option>
 
-            {selectedProduct?.sizes.map((size) => (
+            {sizes.map((size) => (
               <option
                 key={size}
                 value={size}
@@ -92,12 +168,19 @@ function InventoryGarmentForm({
             type="number"
             className="form-control"
             min="1"
-            max={selectedProduct?.stock || undefined}
+            max={
+              Number(selectedProduct?.stock || 0) > 0
+                ? Number(selectedProduct.stock)
+                : undefined
+            }
             value={form.quantity}
+            disabled={!selectedProduct}
             onChange={(e) => {
+              const value = Number(e.target.value)
+
               setForm({
                 ...form,
-                quantity: Number(e.target.value)
+                quantity: value
               })
 
               setAiResult(null)
@@ -128,16 +211,14 @@ function InventoryGarmentForm({
               Seleccione
             </option>
 
-            {selectedProduct?.allowedTechniques.map(
-              (technique) => (
-                <option
-                  key={technique}
-                  value={technique}
-                >
-                  {technique}
-                </option>
-              )
-            )}
+            {techniques.map((technique) => (
+              <option
+                key={technique}
+                value={technique}
+              >
+                {technique}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -165,7 +246,7 @@ function InventoryGarmentForm({
               Seleccione
             </option>
 
-            {selectedProduct?.availableSides.map((side) => (
+            {availableSides.map((side) => (
               <option
                 key={side}
                 value={side}
@@ -173,47 +254,35 @@ function InventoryGarmentForm({
                 {side === 'frente'
                   ? 'Frente'
                   : side === 'espalda'
-                  ? 'Espalda'
-                  : 'Frente y espalda'}
+                    ? 'Espalda'
+                    : 'Frente y espalda'}
               </option>
             ))}
           </select>
         </div>
+
       </div>
 
-      {selectedProduct && (
-        <div className="selected-product-summary">
-          <div>
-            <span className="summary-label">
-              Producto seleccionado
-            </span>
-
-            <strong>
-              {selectedProduct.name}
-            </strong>
+      {selectedProduct &&
+        sizes.length === 0 && (
+          <div className="alert alert-warning mt-3">
+            Este producto no tiene tallas configuradas.
           </div>
+        )}
 
-          <div>
-            <span className="summary-label">
-              Color
-            </span>
-
-            <strong>
-              {selectedProduct.color}
-            </strong>
+      {selectedProduct &&
+        techniques.length === 0 && (
+          <div className="alert alert-warning mt-3">
+            Este producto no tiene técnicas de personalización configuradas.
           </div>
+        )}
 
-          <div>
-            <span className="summary-label">
-              Stock disponible
-            </span>
-
-            <strong>
-              {selectedProduct.stock}
-            </strong>
+      {selectedProduct &&
+        availableSides.length === 0 && (
+          <div className="alert alert-warning mt-3">
+            Este producto no tiene áreas de personalización configuradas.
           </div>
-        </div>
-      )}
+        )}
     </>
   )
 }

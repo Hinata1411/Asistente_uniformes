@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter,  Routes, Route, Navigate } from 'react-router-dom'
 
 import CreateOrderPage from './pages/CreateOrderPage'
 import OrdersHistoryPage from './pages/OrdersHistoryPage'
@@ -6,8 +6,13 @@ import LoginPage from './pages/LoginPage'
 import PrivateRoute from './components/PrivateRoute'
 import DashboardPage from './pages/DashboardPage'
 import AppLayout from './components/AppLayout'
+import ToastContainer from './components/ToastContainer'
+import DialogHost from './components/DialogHost'
 import ProductsPage from './pages/ProductsPage'
 import CreateProductPage from './pages/CreateProductPage'
+import EmployeeDashboardPage from './pages/EmployeeDashboardPage'
+import ProfilePage from './pages/ProfilePage'
+import { useAuth } from './context/AuthContext'
 
 function ProtectedLayout({ children, allowedRoles }) {
   return (
@@ -19,9 +24,38 @@ function ProtectedLayout({ children, allowedRoles }) {
   )
 }
 
+function RoleRedirect() {
+  const { user, role, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="container py-5 text-center">
+        Cargando...
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (role === 'admin') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  if (role === 'empleado') {
+    return <Navigate to="/empleado" replace />
+  }
+
+  return <Navigate to="/login" replace />
+}
+
 function App() {
   return (
     <BrowserRouter>
+      <ToastContainer />
+      <DialogHost />
+
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
@@ -30,6 +64,15 @@ function App() {
           element={
             <ProtectedLayout allowedRoles={['admin']}>
               <DashboardPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/empleado"
+          element={
+            <ProtectedLayout allowedRoles={['empleado']}>
+              <EmployeeDashboardPage />
             </ProtectedLayout>
           }
         />
@@ -46,7 +89,7 @@ function App() {
         <Route
           path="/historial"
           element={
-            <ProtectedLayout allowedRoles={['admin']}>
+            <ProtectedLayout allowedRoles={['admin', 'empleado']}>
               <OrdersHistoryPage />
             </ProtectedLayout>
           }
@@ -71,13 +114,33 @@ function App() {
         />
 
         <Route
+          path="/productos/editar/:id"
+          element={
+            <ProtectedLayout allowedRoles={['admin']}>
+              <CreateProductPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/perfil"
+          element={
+            <ProtectedLayout
+              allowedRoles={['admin', 'empleado']}
+            >
+              <ProfilePage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
           path="/"
-          element={<Navigate to="/crearpedido" replace />}
+          element={<RoleRedirect />}
         />
 
         <Route
           path="*"
-          element={<Navigate to="/login" replace />}
+          element={<RoleRedirect />}
         />
       </Routes>
     </BrowserRouter>

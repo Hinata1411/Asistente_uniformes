@@ -1,8 +1,191 @@
-import { Link } from 'react-router-dom'
-import { inventoryProducts } from '../data/inventoryProducts'
+import { useEffect, useState } from 'react'
+import {
+  Link,
+  useNavigate
+} from 'react-router-dom'
+import {
+  collection,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where
+} from 'firebase/firestore'
+
+import { db } from '../firebase/config'
+import { notify } from '../services/toastStore'
+import { askConfirm } from '../services/dialogStore'
 import './ProductsPage.css'
 
 function ProductsPage() {
+  const navigate = useNavigate()
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const snapshot = await getDocs(
+          collection(db, 'products')
+        )
+
+        const productsData = snapshot.docs.map(
+          (document) => ({
+            id: document.id,
+            ...document.data()
+          })
+        )
+
+        setProducts(productsData)
+      } catch (error) {
+        console.error(
+          'Error cargando productos:',
+          error
+        )
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadProducts()
+  }, [])
+
+  const handleStockChange = async (
+    productId,
+    currentStock,
+    change
+  ) => {
+    const newStock =
+      Number(currentStock || 0) + change
+
+    if (newStock < 0) {
+      notify('El stock no puede ser negativo', 'warning')
+      return
+    }
+
+    try {
+      await updateDoc(
+        doc(db, 'products', productId),
+        {
+          stock: newStock
+        }
+      )
+
+      setProducts((prev) =>
+        prev.map((product) =>
+          product.id === productId
+            ? {
+                ...product,
+                stock: newStock
+              }
+            : product
+        )
+      )
+    } catch (error) {
+      console.error(
+        'Error actualizando stock:',
+        error
+      )
+
+      notify(
+        'No se pudo actualizar el stock',
+        'error'
+      )
+    }
+  }
+
+  const handleToggleActive = async (product) => {
+    const newActiveStatus = product.active === false
+
+    try {
+      await updateDoc(
+        doc(db, 'products', product.id),
+        {
+          active: newActiveStatus
+        }
+      )
+
+      setProducts((prev) =>
+        prev.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                active: newActiveStatus
+              }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error(
+        'Error actualizando estado del producto:',
+        error
+      )
+
+      notify(
+        'No se pudo actualizar el estado del producto',
+        'error'
+      )
+    }
+  }
+
+  const handleDeleteProduct = async (product) => {
+    const confirmed = await askConfirm(
+      `¿Deseas eliminar definitivamente "${product.name}"?`,
+      { confirmLabel: 'Eliminar definitivamente', danger: true }
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const ordersQuery = query(
+        collection(db, 'orders'),
+        where('productId', '==', product.id)
+      )
+
+      const ordersSnapshot = await getDocs(
+        ordersQuery
+      )
+
+      if (!ordersSnapshot.empty) {
+        notify(
+          'Este producto ya está asociado a uno o más pedidos. No puede eliminarse definitivamente; puedes desactivarlo.',
+          'warning'
+        )
+
+        return
+      }
+
+      await deleteDoc(
+        doc(db, 'products', product.id)
+      )
+
+      setProducts((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== product.id
+        )
+      )
+
+      notify(
+        'Producto eliminado definitivamente',
+        'success'
+      )
+    } catch (error) {
+      console.error(
+        'Error eliminando producto:',
+        error
+      )
+
+      notify(
+        'No se pudo eliminar el producto',
+        'error'
+      )
+    }
+  }
+
   return (
     <div className="products-page">
 
@@ -13,8 +196,9 @@ function ProductsPage() {
           </h2>
 
           <p className="page-subtitle">
-            Consulta las prendas disponibles para personalización,
-            sus tallas, técnicas y stock actual.
+            Consulta las prendas disponibles para
+            personalización, sus tallas, técnicas
+            y stock actual.
           </p>
         </div>
 
@@ -26,8 +210,14 @@ function ProductsPage() {
         </Link>
       </div>
 
+      {loading && (
+        <div className="text-muted mb-3">
+          Cargando productos...
+        </div>
+      )}
+
       <div className="products-grid">
-        {inventoryProducts.map((product) => (
+        {products.map((product) => (
           <article
             key={product.id}
             className="product-card"
@@ -51,6 +241,20 @@ function ProductsPage() {
                   <h3>
                     {product.name}
                   </h3>
+                  <div className="product-price">
+                    Q{Number(product.price || 0).toFixed(2)}
+                  </div>
+                  <span
+                    className={`badge ${
+                      product.active === false
+                        ? 'bg-secondary'
+                        : 'bg-success'
+                    }`}
+                  >
+                    {product.active === false
+                      ? 'Inactivo'
+                      : 'Activo'}
+                  </span>
                 </div>
 
                 <span
@@ -58,12 +262,53 @@ function ProductsPage() {
                     product.stock > 5
                       ? 'stock-ok'
                       : product.stock > 0
-                      ? 'stock-low'
-                      : 'stock-empty'
+                        ? 'stock-low'
+                        : 'stock-empty'
                   }`}
                 >
                   {product.stock} disponibles
                 </span>
+              </div>
+
+              <div className="mt-3">
+                <span className="product-info-label">
+                  Ajustar stock
+                </span>
+
+                <div className="d-flex align-items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() =>
+                      handleStockChange(
+                        product.id,
+                        product.stock,
+                        -1
+                      )
+                    }
+                    disabled={product.stock <= 0}
+                  >
+                    −
+                  </button>
+
+                  <strong>
+                    {product.stock}
+                  </strong>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-success btn-sm"
+                    onClick={() =>
+                      handleStockChange(
+                        product.id,
+                        product.stock,
+                        1
+                      )
+                    }
+                  >
+                    +
+                  </button>
+                </div>
               </div>
 
               <div className="product-info-grid">
@@ -102,8 +347,8 @@ function ProductsPage() {
                             side === 'frente'
                               ? 'Frente'
                               : side === 'espalda'
-                              ? 'Espalda'
-                              : 'Ambos'
+                                ? 'Espalda'
+                                : 'Ambos'
                           )
                           .join(', ')
                       : 'No definida'}
@@ -117,6 +362,52 @@ function ProductsPage() {
                   Técnicas permitidas
                 </span>
 
+                <div className="d-flex justify-content-end gap-2 mt-3">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm"
+                    onClick={() =>
+                      navigate(
+                        `/productos/editar/${product.id}`,
+                        {
+                          state: {
+                            productToEdit: product
+                          }
+                        }
+                      )
+                    }
+                  >
+                    Editar
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${
+                      product.active === false
+                        ? 'btn-outline-success'
+                        : 'btn-outline-danger'
+                    }`}
+                    onClick={() =>
+                      handleToggleActive(product)
+                    }
+                  >
+                    {product.active === false
+                      ? 'Activar'
+                      : 'Desactivar'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() =>
+                      handleDeleteProduct(product)
+                    }
+                  >
+                    Eliminar
+                  </button>
+
+                </div>
+                
                 <div className="technique-list">
                   {product.allowedTechniques?.length > 0 ? (
                     product.allowedTechniques.map(
@@ -142,7 +433,7 @@ function ProductsPage() {
         ))}
       </div>
 
-      {inventoryProducts.length === 0 && (
+      {!loading && products.length === 0 && (
         <div className="empty-products">
           No hay productos registrados.
         </div>

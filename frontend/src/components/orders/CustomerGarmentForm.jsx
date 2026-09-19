@@ -181,10 +181,6 @@ function CustomerGarmentForm({
             <option value="Bordado">
               Bordado
             </option>
-
-            <option value="Serigrafía">
-              Serigrafía
-            </option>
           </select>
         </div>
 

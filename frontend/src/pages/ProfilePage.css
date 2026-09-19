@@ -1,0 +1,290 @@
+.profile-page {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 26px;
+  padding: 26px;
+  color: #ffffff;
+  background:
+    linear-gradient(
+      135deg,
+      #111111 0%,
+      #242424 100%
+    );
+  border-bottom: 4px solid #ffc400;
+  border-radius: 20px;
+  box-shadow: 0 12px 30px
+    rgba(0, 0, 0, 0.12);
+}
+
+.profile-header h2 {
+  margin: 4px 0 8px;
+  font-size: 2rem;
+  color: white;
+}
+
+.profile-header p {
+  max-width: 620px;
+  margin: 0;
+  color: #d9d9d9;
+}
+
+.profile-eyebrow {
+  color: #ffc400;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-avatar {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  place-items: center;
+  color: #111111;
+  background: #ffc400;
+  border: 4px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(280px, 0.9fr)
+    minmax(320px, 1.1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+/* Columna izquierda: "Información de la cuenta" + "Datos personales" apiladas */
+.profile-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-card {
+  padding: 26px;
+  background: #ffffff;
+  border: 1px solid #e3e6eb;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px
+    rgba(15, 23, 42, 0.07);
+}
+
+.profile-card h3 {
+  margin: 0 0 8px;
+  color: #111111;
+}
+
+.profile-description {
+  margin-bottom: 22px;
+  color: #667085;
+}
+
+.profile-information {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.profile-information div {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  background: #f7f8fa;
+  border-radius: 12px;
+}
+
+.profile-information span {
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+.profile-information strong {
+  overflow-wrap: anywhere;
+  color: #111111;
+}
+
+.profile-security-note {
+  margin-top: 20px;
+  padding: 14px;
+  color: #624b00;
+  background: #fff8d8;
+  border: 1px solid #ffe074;
+  border-radius: 12px;
+}
+
+.password-field {
+  margin-bottom: 18px;
+}
+
+.password-field label {
+  display: block;
+  margin-bottom: 7px;
+  color: #252525;
+  font-weight: 600;
+}
+
+.password-control {
+  display: flex;
+}
+
+.password-control input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #cfd4dc;
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  outline: none;
+}
+
+.password-control input:focus {
+  border-color: #d8a900;
+  box-shadow: 0 0 0 3px
+    rgba(255, 196, 0, 0.18);
+}
+
+.password-control button {
+  padding: 0 14px;
+  color: #111111;
+  background: #ffc400;
+  border: 1px solid #d8a900;
+  border-radius: 0 10px 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.password-control input:disabled,
+.password-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Campos simples de "Datos personales" (sin botón de mostrar/ocultar) */
+.profile-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cfd4dc;
+  border-radius: 10px;
+  outline: none;
+}
+
+.profile-input:focus {
+  border-color: #d8a900;
+  box-shadow: 0 0 0 3px
+    rgba(255, 196, 0, 0.18);
+}
+
+.profile-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.field-error {
+  margin-top: 6px;
+  color: #9e1c1c;
+  font-size: 0.85rem;
+}
+
+.password-requirements {
+  margin: 20px 0;
+  padding: 14px 18px;
+  color: #4b5563;
+  background: #f7f8fa;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.password-requirements ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.profile-alert {
+  margin-bottom: 18px;
+  padding: 13px 15px;
+  border-radius: 10px;
+}
+
+.profile-alert.success {
+  color: #116329;
+  background: #eaf8ee;
+  border: 1px solid #92d6a2;
+}
+
+.profile-alert.error {
+  color: #9e1c1c;
+  background: #fff0f0;
+  border: 1px solid #efaaaa;
+}
+
+.change-password-button {
+  width: 100%;
+  padding: 13px 18px;
+  color: #111111;
+  background: #ffc400;
+  border: 0;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.change-password-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 18px
+    rgba(216, 169, 0, 0.28);
+}
+
+.change-password-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (max-width: 800px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .profile-header {
+    align-items: flex-start;
+    padding: 20px;
+  }
+
+  .profile-avatar {
+    width: 54px;
+    height: 54px;
+    font-size: 1.4rem;
+  }
+
+  .profile-card {
+    padding: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .change-password-button {
+    transition: none;
+  }
+
+  .change-password-button:hover {
+    transform: none;
+  }
+}

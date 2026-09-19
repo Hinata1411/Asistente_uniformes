@@ -15,7 +15,8 @@ import {
 import {
   ref,
   uploadString,
-  getDownloadURL
+  getDownloadURL,
+  deleteObject
 } from 'firebase/storage'
 
 import GarmentEditor from '../components/GarmentEditor'
@@ -56,6 +57,19 @@ function CreateOrderPage() {
   const garmentEditorRef = useRef(null)
   const [previewBase64, setPreviewBase64] = useState('')
   const [editorElements, setEditorElements] = useState([])
+
+  /*
+    Guarda la última versión de "elements" que el editor ya nos
+    avisó, para poder detectar un cambio REAL hecho por la persona
+    (y ahí sí invalidar la validación de IA guardada). El editor
+    puede volver a avisar los mismos elementos sin que nada haya
+    cambiado (por ejemplo al hidratar el diseño guardado al entrar
+    a editar un pedido); si comparáramos siempre contra
+    editingOrder.elements, cada uno de esos avisos repetidos volvía
+    a "detectar" una diferencia y borraba la validación justo
+    después de generarla.
+  */
+  const lastNotifiedElementsRef = useRef([])
   const [customerGarmentImage, setCustomerGarmentImage] = useState('')
   const {
     inventoryProducts,
@@ -234,6 +248,8 @@ function CreateOrderPage() {
       setEditorElements(
         order.elements || []
       )
+      lastNotifiedElementsRef.current =
+        order.elements || []
 
       window.scrollTo(0, 0)
     }
@@ -244,6 +260,7 @@ function CreateOrderPage() {
     setAiResult(null)
     setPreviewBase64('')
     setEditorElements([])
+    lastNotifiedElementsRef.current = []
     setCustomerGarmentImage('')
     setEditingOrder(null)
   }
@@ -463,6 +480,33 @@ function CreateOrderPage() {
         isInventoryGarment
           ? selectedProduct.id
           : null
+
+      /*
+        Subir la vista previa actualizada del editor ANTES de la
+        transacción (igual que al crear un pedido nuevo). Si no se
+        hace esto, el diseño editado se guarda pero el historial,
+        el mensaje de WhatsApp y el PDF siguen mostrando la imagen
+        vieja de antes de editar.
+      */
+      const previewPath =
+        `orders/${Date.now()}.png`
+
+      const previewStorageRef =
+        ref(
+          storage,
+          previewPath
+        )
+
+      await uploadString(
+        previewStorageRef,
+        order.previewImage,
+        'data_url'
+      )
+
+      const previewImageUrl =
+        await getDownloadURL(
+          previewStorageRef
+        )
 
       await runTransaction(
         db,
@@ -697,6 +741,11 @@ function CreateOrderPage() {
               elements:
                 orderElements,
 
+              previewImage:
+                previewImageUrl,
+
+              previewPath,
+
               aiValidation:
                 aiResult,
 
@@ -736,6 +785,35 @@ function CreateOrderPage() {
           )
         }
       )
+
+      /*
+        Limpieza de mejor esfuerzo: borrar en Storage la vista
+        previa anterior (ya reemplazada) para no dejar imágenes
+        huérfanas. Si falla, no debe impedir que la edición ya
+        guardada se dé por exitosa.
+      */
+      const oldPreviewRef =
+        editingOrder.previewPath ||
+        editingOrder.previewImage
+
+      if (
+        oldPreviewRef &&
+        oldPreviewRef !== previewPath
+      ) {
+        try {
+          await deleteObject(
+            ref(
+              storage,
+              oldPreviewRef
+            )
+          )
+        } catch (storageError) {
+          console.warn(
+            'No se pudo eliminar la vista previa anterior en Storage:',
+            storageError
+          )
+        }
+      }
 
       await reloadProducts()
 
@@ -1405,9 +1483,9 @@ function CreateOrderPage() {
                 })
               }
             >
-              <option value="chico">Chico (8x10cm)</option>
-              <option value="mediano">Mediano (16x20cm)</option>
-              <option value="grande">Grande (30x23cm)</option>
+              <option value="chico">Chico (8x10")</option>
+              <option value="mediano">Mediano (16x20")</option>
+              <option value="grande">Grande (30x23")</option>
             </select>
           </div>
 
@@ -1427,9 +1505,9 @@ function CreateOrderPage() {
                   })
                 }
               >
-                <option value="chico">Chico (8x10cm)</option>
-                <option value="mediano">Mediano (16x20cm)</option>
-                <option value="grande">Grande (30x23cm)</option>
+                <option value="chico">Chico (8x10")</option>
+                <option value="mediano">Mediano (16x20")</option>
+                <option value="grande">Grande (30x23")</option>
               </select>
             </div>
           )}
@@ -1637,16 +1715,34 @@ function CreateOrderPage() {
 
               /*
                 Si estamos editando un pedido y la personalización
-                ya cambió respecto a la que estaba guardada, la
-                validación de IA anterior queda desactualizada:
+                ya cambió respecto a la última versión que vimos,
+                la validación de IA anterior queda desactualizada:
                 hay que forzar que se vuelva a validar antes de
                 poder guardar.
+
+                Importante: comparamos contra la última versión
+                notificada (lastNotifiedElementsRef), NO contra
+                editingOrder.elements directamente. El editor puede
+                volver a avisar los mismos elementos sin que la
+                persona haya cambiado nada (por ejemplo al hidratar
+                el diseño guardado al entrar a editar), y comparar
+                siempre contra editingOrder.elements hacía que esos
+                avisos repetidos "detectaran" una diferencia y
+                borraran la validación justo después de generarla.
               */
+              const changed =
+                JSON.stringify(newElements) !==
+                JSON.stringify(
+                  lastNotifiedElementsRef.current
+                )
+
+              lastNotifiedElementsRef.current =
+                newElements
+
               if (
                 editingOrder &&
                 aiResult &&
-                JSON.stringify(newElements) !==
-                  JSON.stringify(editingOrder.elements || [])
+                changed
               ) {
                 setAiResult(null)
               }

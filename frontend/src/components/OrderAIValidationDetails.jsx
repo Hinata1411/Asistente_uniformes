@@ -63,7 +63,7 @@ function OrderAIValidationDetails({ validation, validatedAt }) {
           {formattedDate}
         </p>
 
-        <div className="mt-3">
+        <div className="mt-2">
           <strong>Advertencias:</strong>
 
           {Array.isArray(validation.warnings) &&

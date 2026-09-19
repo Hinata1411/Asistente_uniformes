@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useEffect, useState, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import useInventoryProducts from '../hooks/orders/useInventoryProducts'
 import { getPersonalizationPricing } from '../services/pricingService'
 
@@ -47,10 +47,13 @@ const localDateValue = (value) => {
 
 function CreateOrderPage() {
   const location = useLocation()
+  const navigate = useNavigate()
 
   const [editingOrder, setEditingOrder] = useState(null)
   const [aiResult, setAiResult] = useState(null)
   const [loadingAI, setLoadingAI] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const garmentEditorRef = useRef(null)
   const [previewBase64, setPreviewBase64] = useState('')
   const [editorElements, setEditorElements] = useState([])
   const [customerGarmentImage, setCustomerGarmentImage] = useState('')
@@ -113,15 +116,23 @@ function CreateOrderPage() {
   const isInventoryGarment =
     form.garmentSource === 'inventory'
 
+  const isCustomerGarment =
+    form.garmentSource === 'customer'
+
   // =========================================
   // COTIZACIÓN (se recalcula en cada render)
   // =========================================
 
   const quantityForQuote = Number(form.quantity) || 0
 
+  /*
+    Si el cliente trae su propia prenda, el negocio no la vende:
+    solo cobra la personalización. El precio base solo aplica
+    a prendas de inventario.
+  */
   const unitBasePrice = isInventoryGarment
     ? Number(selectedProduct?.price || 0)
-    : Number(form.customerGarmentPrice || 0)
+    : 0
 
   const techniquePricing =
     personalizationPricing[form.technique]
@@ -238,6 +249,12 @@ function CreateOrderPage() {
   }
 
   const handleSaveOrder = async (order) => {
+    // Evita duplicar el pedido si el botón se presiona varias veces
+    // mientras la operación anterior todavía se está guardando.
+    if (isSaving) return
+
+    setIsSaving(true)
+
   try {
     if (!localDateValue(form.orderDate) || !localDateValue(form.expectedDeliveryDate)) {
       alert('Indica una fecha válida de toma del pedido y de entrega prevista.')
@@ -247,9 +264,6 @@ function CreateOrderPage() {
       alert('La entrega prevista no puede ser anterior a la toma del pedido.')
       return
     }
-
-    const isCustomerGarment =
-      form.garmentSource === 'customer'
 
     const requestedQuantity =
       Number(form.quantity)
@@ -305,13 +319,17 @@ function CreateOrderPage() {
       return
     }
 
+    /*
+      El precio base solo es obligatorio cuando la prenda es del
+      inventario (es lo que el negocio vende). Si el cliente trae
+      su propia prenda, el precio base es 0 y no se pide.
+    */
     if (
+      isInventoryGarment &&
       unitBasePrice <= 0
     ) {
       alert(
-        isInventoryGarment
-          ? 'El producto seleccionado no tiene precio configurado. Definilo en Productos antes de continuar.'
-          : 'Ingresa el precio base de la prenda del cliente en la sección de Cotización.'
+        'El producto seleccionado no tiene precio configurado. Definilo en Productos antes de continuar.'
       )
       return
     }
@@ -693,6 +711,11 @@ function CreateOrderPage() {
               personalizationSizeBack:
                 isBothSides ? form.personalizationSizeBack : null,
 
+              personalizationSurchargeFront,
+
+              personalizationSurchargeBack:
+                isBothSides ? personalizationSurchargeBack : 0,
+
               personalizationSurcharge,
 
               quotedUnitPrice:
@@ -721,6 +744,7 @@ function CreateOrderPage() {
       )
 
       resetForm()
+      navigate('/historial')
       return
     }
 
@@ -800,6 +824,11 @@ function CreateOrderPage() {
 
       personalizationSizeBack:
         isBothSides ? form.personalizationSizeBack : null,
+
+      personalizationSurchargeFront,
+
+      personalizationSurchargeBack:
+        isBothSides ? personalizationSurchargeBack : 0,
 
       personalizationSurcharge,
 
@@ -919,6 +948,7 @@ function CreateOrderPage() {
     )
 
     resetForm()
+    navigate('/historial')
   } catch (error) {
     console.error(
       'Error guardando pedido:',
@@ -928,6 +958,8 @@ function CreateOrderPage() {
     alert(
       `Ocurrió un error al guardar el pedido: ${error.message}`
     )
+  } finally {
+    setIsSaving(false)
   }
 }
   const handleGenerateAI = async () => {
@@ -1128,6 +1160,46 @@ function CreateOrderPage() {
         )}
       </div>
 
+      {/* BOTÓN DE GUARDAR CIRCULAR FIJO (visible siempre, del inicio al final) */}
+      <button
+        type="button"
+        className={`fab-save-button ${isSaving ? 'is-saving' : ''}`}
+        disabled={isSaving}
+        title={
+          editingOrder
+            ? 'Guardar cambios del pedido'
+            : 'Guardar pedido'
+        }
+        aria-label={
+          editingOrder
+            ? 'Guardar cambios del pedido'
+            : 'Guardar pedido'
+        }
+        onClick={() =>
+          garmentEditorRef.current?.triggerSave()
+        }
+      >
+        {isSaving ? (
+          <span className="fab-spinner" aria-hidden="true" />
+        ) : (
+          <svg
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M4 12.5L9.5 18L20 6"
+              stroke="#1a1a1a"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </button>
+
       {/* PASO 1 */}
       <section className="order-section">
         <div className="order-section-header">
@@ -1309,28 +1381,10 @@ function CreateOrderPage() {
           </p>
         )}
 
-        {!isInventoryGarment && (
-          <div className="row g-3 mb-2">
-            <div className="col-12 col-md-4">
-              <label className="form-label">
-                Precio base de la prenda (Q)
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="form-control"
-                value={form.customerGarmentPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    customerGarmentPrice: e.target.value
-                  })
-                }
-              />
-            </div>
-          </div>
+        {isCustomerGarment && (
+          <p className="quote-hint">
+            El cliente trae su propia prenda: solo se cobra la personalización (no hay precio base de la prenda).
+          </p>
         )}
 
         <div className="row g-3 mb-2">
@@ -1351,9 +1405,9 @@ function CreateOrderPage() {
                 })
               }
             >
-              <option value="chico">Chico (8x10")</option>
-              <option value="mediano">Mediano (16x20")</option>
-              <option value="grande">Grande (30x23")</option>
+              <option value="chico">Chico (8x10cm)</option>
+              <option value="mediano">Mediano (16x20cm)</option>
+              <option value="grande">Grande (23x30cm)</option>
             </select>
           </div>
 
@@ -1373,9 +1427,9 @@ function CreateOrderPage() {
                   })
                 }
               >
-                <option value="chico">Chico (8x10")</option>
-                <option value="mediano">Mediano (16x20")</option>
-                <option value="grande">Grande (30x23")</option>
+                <option value="chico">Chico (8x10cm)</option>
+                <option value="mediano">Mediano (16x20cm)</option>
+                <option value="grande">Grande (23x30cm)</option>
               </select>
             </div>
           )}
@@ -1395,93 +1449,111 @@ function CreateOrderPage() {
 
         {unitPrice > 0 && (
           <div className="quote-summary">
-            <div className="quote-row">
-              <span>Precio base de la prenda</span>
-              <strong>Q{unitBasePrice.toFixed(2)}</strong>
-            </div>
-
-            {!isBothSides && (
+            <div className="quote-breakdown">
               <div className="quote-row">
-                <span>Recargo por personalización ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
-                <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
+                <span>Precio base de la prenda</span>
+                <strong>Q{unitBasePrice.toFixed(2)}</strong>
               </div>
-            )}
 
-            {isBothSides && (
-              <>
+              {!isBothSides && (
                 <div className="quote-row">
-                  <span>Recargo frente ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
+                  <span>Recargo por personalización ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
                   <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
                 </div>
+              )}
 
-                <div className="quote-row">
-                  <span>Recargo espalda ({form.technique || 'sin técnica'}, {form.personalizationSizeBack})</span>
-                  <strong>Q{personalizationSurchargeBack.toFixed(2)}</strong>
-                </div>
-              </>
-            )}
+              {isBothSides && (
+                <>
+                  <div className="quote-row">
+                    <span>Recargo frente ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
+                    <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
+                  </div>
 
-            <div className="quote-row">
-              <span>Precio unitario</span>
-              <strong>Q{unitPrice.toFixed(2)}</strong>
+                  <div className="quote-row">
+                    <span>Recargo espalda ({form.technique || 'sin técnica'}, {form.personalizationSizeBack})</span>
+                    <strong>Q{personalizationSurchargeBack.toFixed(2)}</strong>
+                  </div>
+                </>
+              )}
+
+              <div className="quote-row">
+                <span>Precio unitario</span>
+                <strong>Q{unitPrice.toFixed(2)}</strong>
+              </div>
+
+              <div className="quote-row">
+                <span>Cantidad</span>
+                <strong>{quantityForQuote}</strong>
+              </div>
             </div>
 
-            <div className="quote-row">
-              <span>Cantidad</span>
-              <strong>{quantityForQuote}</strong>
-            </div>
-
-            <div className="quote-row quote-total">
+            <div className="quote-total-banner">
               <span>Total cotizado</span>
               <strong>Q{quoteTotal.toFixed(2)}</strong>
             </div>
 
-            <div className="quote-payment-options">
-              <label>
-                <input
-                  type="radio"
-                  name="paymentPlan"
-                  value="anticipo_50"
-                  checked={form.paymentPlan === 'anticipo_50'}
-                  onChange={() =>
-                    setForm({
-                      ...form,
-                      paymentPlan: 'anticipo_50'
-                    })
-                  }
-                />
-                Anticipo 50%
-              </label>
+            <div className="quote-payment-plan">
+              <p className="quote-section-label">Forma de pago</p>
 
-              <label>
-                <input
-                  type="radio"
-                  name="paymentPlan"
-                  value="completo"
-                  checked={form.paymentPlan === 'completo'}
-                  onChange={() =>
-                    setForm({
-                      ...form,
-                      paymentPlan: 'completo'
-                    })
-                  }
-                />
-                Pago completo
-              </label>
+              <div className="quote-payment-options">
+                <label
+                  className={`quote-payment-card ${form.paymentPlan === 'anticipo_50' ? 'active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentPlan"
+                    value="anticipo_50"
+                    checked={form.paymentPlan === 'anticipo_50'}
+                    onChange={() =>
+                      setForm({
+                        ...form,
+                        paymentPlan: 'anticipo_50'
+                      })
+                    }
+                  />
+                  <div>
+                    <strong>Anticipo 50%</strong>
+                    <span>Paga la mitad ahora y el resto al entregar</span>
+                  </div>
+                </label>
+
+                <label
+                  className={`quote-payment-card ${form.paymentPlan === 'completo' ? 'active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentPlan"
+                    value="completo"
+                    checked={form.paymentPlan === 'completo'}
+                    onChange={() =>
+                      setForm({
+                        ...form,
+                        paymentPlan: 'completo'
+                      })
+                    }
+                  />
+                  <div>
+                    <strong>Pago completo</strong>
+                    <span>Paga el total del pedido ahora</span>
+                  </div>
+                </label>
+              </div>
             </div>
 
-            <div className="quote-row">
-              <span>
-                {form.paymentPlan === 'completo'
-                  ? 'Total a pagar ahora'
-                  : 'Anticipo a pagar ahora (50%)'}
-              </span>
-              <strong>Q{depositPaid.toFixed(2)}</strong>
-            </div>
+            <div className="quote-payment-result">
+              <div className="quote-stat quote-stat-now">
+                <span>
+                  {form.paymentPlan === 'completo'
+                    ? 'Total a pagar ahora'
+                    : 'Anticipo a pagar ahora (50%)'}
+                </span>
+                <strong>Q{depositPaid.toFixed(2)}</strong>
+              </div>
 
-            <div className="quote-row">
-              <span>Saldo pendiente</span>
-              <strong>Q{balanceDue.toFixed(2)}</strong>
+              <div className="quote-stat quote-stat-balance">
+                <span>Saldo pendiente</span>
+                <strong>Q{balanceDue.toFixed(2)}</strong>
+              </div>
             </div>
           </div>
         )}
@@ -1522,6 +1594,10 @@ function CreateOrderPage() {
         )}
 
         <GarmentEditor
+          ref={
+            garmentEditorRef
+          }
+
           product={
             selectedProduct
           }

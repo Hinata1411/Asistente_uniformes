@@ -56,10 +56,27 @@ console.log(
             className="form-select"
             value={form.productId}
             onChange={(e) => {
+              const newProductId = e.target.value
+
+              const newProduct = inventoryProducts.find(
+                (item) => item.id === newProductId
+              )
+
+              /*
+                Cada producto solo maneja una talla (no se
+                soportan variantes), así que la traemos
+                automáticamente en cuanto se elige el producto.
+              */
+              const newProductSizes = Array.isArray(
+                newProduct?.sizes
+              )
+                ? newProduct.sizes
+                : []
+
               setForm({
                 ...form,
-                productId: e.target.value,
-                size: '',
+                productId: newProductId,
+                size: newProductSizes[0] || '',
                 technique: '',
                 customizationSide: ''
               })
@@ -73,17 +90,32 @@ console.log(
               Seleccione
             </option>
 
-            {inventoryProducts.map((product) => (
-              <option
-                key={product.id}
-                value={product.id}
-              >
-                {product.name || 'Producto sin nombre'}
-                {Number(product.stock || 0) <= 0
-                  ? ' - Agotado'
-                  : ` - Stock: ${Number(product.stock || 0)}`}
-              </option>
-            ))}
+            {inventoryProducts.map((product) => {
+              const productSizes = Array.isArray(product.sizes)
+                ? product.sizes
+                : []
+
+              const stockLabel =
+                Number(product.stock || 0) <= 0
+                  ? 'Agotado'
+                  : `Stock: ${Number(product.stock || 0)}`
+
+              return (
+                <option
+                  key={product.id}
+                  value={product.id}
+                >
+                  {[
+                    product.name || 'Producto sin nombre',
+                    product.color || 'sin color',
+                    productSizes[0]
+                      ? `Talla ${productSizes[0]}`
+                      : 'sin talla',
+                    stockLabel
+                  ].join(' / ')}
+                </option>
+              )
+            })}
           </select>
         </div>
 
@@ -96,7 +128,12 @@ console.log(
           <select
             className="form-select"
             value={form.size}
-            disabled={!selectedProduct}
+            /*
+              La talla viene fija del producto (una sola
+              por producto), así que aquí solo se muestra,
+              no se elige.
+            */
+            disabled={!selectedProduct || sizes.length <= 1}
             onChange={(e) => {
               setForm({
                 ...form,
@@ -225,42 +262,6 @@ console.log(
         </div>
 
       </div>
-
-      {selectedProduct && (
-        <div className="selected-product-summary">
-
-          <div>
-            <span className="summary-label">
-              Producto seleccionado
-            </span>
-
-            <strong>
-              {selectedProduct.name || 'No definido'}
-            </strong>
-          </div>
-
-          <div>
-            <span className="summary-label">
-              Color
-            </span>
-
-            <strong>
-              {selectedProduct.color || 'No definido'}
-            </strong>
-          </div>
-
-          <div>
-            <span className="summary-label">
-              Stock disponible
-            </span>
-
-            <strong>
-              {Number(selectedProduct.stock || 0)}
-            </strong>
-          </div>
-
-        </div>
-      )}
 
       {selectedProduct &&
         sizes.length === 0 && (

@@ -121,7 +121,7 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">⌂</span>
-                <span className="sidebar-label">Dashboard</span>
+                <span className="sidebar-label">Inicio</span>
               </Link>
 
               <div className="sidebar-section-title">Pedidos</div>

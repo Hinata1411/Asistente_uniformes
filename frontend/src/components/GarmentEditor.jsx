@@ -9,7 +9,9 @@ import {
 import {
   useEffect,
   useRef,
-  useState
+  useState,
+  forwardRef,
+  useImperativeHandle
 } from 'react'
 
 import './GarmentEditor.css'
@@ -171,20 +173,35 @@ function ImageElement({
         <Transformer
           ref={trRef}
           rotateEnabled={false}
+          keepRatio
+          enabledAnchors={[
+            'top-left',
+            'top-right',
+            'bottom-left',
+            'bottom-right'
+          ]}
+          anchorSize={20}
+          anchorCornerRadius={10}
+          anchorFill="#ffffff"
+          anchorStroke="#ffc603"
+          anchorStrokeWidth={2.5}
+          borderStroke="#ffc603"
+          borderStrokeWidth={2}
+          borderDash={[6, 3]}
           boundBoxFunc={(
             oldBox,
             newBox
           ) => {
             if (
-              newBox.width < 30 ||
-              newBox.height < 30
+              newBox.width < 25 ||
+              newBox.height < 25
             ) {
               return oldBox
             }
 
             if (
-              newBox.width > 350 ||
-              newBox.height > 350
+              newBox.width > 420 ||
+              newBox.height > 420
             ) {
               return oldBox
             }
@@ -282,7 +299,7 @@ function TextElement({
 
             fontSize:
               Math.max(
-                18,
+                10,
                 element.fontSize *
                   scaleX
               )
@@ -294,12 +311,21 @@ function TextElement({
         <Transformer
           ref={trRef}
           rotateEnabled={false}
+          keepRatio
           enabledAnchors={[
             'top-left',
             'top-right',
             'bottom-left',
             'bottom-right'
           ]}
+          anchorSize={20}
+          anchorCornerRadius={10}
+          anchorFill="#ffffff"
+          anchorStroke="#ffc603"
+          anchorStrokeWidth={2.5}
+          borderStroke="#ffc603"
+          borderStrokeWidth={2}
+          borderDash={[6, 3]}
         />
       )}
     </>
@@ -310,7 +336,7 @@ function TextElement({
    EDITOR PRINCIPAL
 ========================================================= */
 
-function GarmentEditor({
+const GarmentEditor = forwardRef(function GarmentEditor({
   product,
   customerGarmentImage,
   customerGarment,
@@ -318,7 +344,7 @@ function GarmentEditor({
   onPreviewChange,
   onElementsChange,
   onSave
-}) {
+}, ref) {
   /*
     El producto de inventario ya viene normalizado:
 
@@ -997,6 +1023,12 @@ function GarmentEditor({
       }
     }
 
+  // Permite disparar el guardado desde un botón fuera de este
+  // componente (ej. el botón fijo de "Guardar pedido" arriba).
+  useImperativeHandle(ref, () => ({
+    triggerSave: handleSave
+  }))
+
   /* =======================================================
      RENDER ELEMENTOS
   ======================================================= */
@@ -1400,33 +1432,12 @@ function GarmentEditor({
 
             </div>
 
-            {/* ACCIONES */}
-
-            <div className="text-center mt-4">
-
-              <button
-                type="button"
-                className="btn btn-outline-dark me-2"
-                onClick={() =>
-                  generatePreview(
-                    true
-                  )
-                }
-              >
-                Actualizar vista previa IA
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-success"
-                onClick={
-                  handleSave
-                }
-              >
-                Guardar pedido
-              </button>
-
-            </div>
+            {/*
+              El guardado se dispara desde el botón circular
+              fijo de arriba (ver CreateOrderPage). La vista
+              previa ya se actualiza sola cuando cambia el
+              diseño, así que no hace falta un botón manual.
+            */}
 
           </>
         )}
@@ -1434,6 +1445,6 @@ function GarmentEditor({
       </div>
     </div>
   )
-}
+})
 
 export default GarmentEditor

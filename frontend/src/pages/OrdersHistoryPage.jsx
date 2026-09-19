@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useId } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { db } from '../firebase/config'
+import { db, storage } from '../firebase/config'
 import {
   collection,
   getDocs,
@@ -11,6 +11,7 @@ import {
   arrayUnion,
   getDoc
 } from 'firebase/firestore'
+import { ref, deleteObject } from 'firebase/storage'
 import jsPDF from 'jspdf'
 import OrderAIValidationDetails from '../components/OrderAIValidationDetails'
 import { useAuth } from '../context/AuthContext'
@@ -92,6 +93,44 @@ const getPaymentSummary = (order) => {
     status, label, badge
   }
 }
+
+// Un color y una etiqueta clara por cada estado real del pedido,
+// siempre dentro de la paleta de marca (negro/dorado), salvo
+// entregado (éxito) y anulado (riesgo), que deben distinguirse
+// de inmediato por convención.
+const STATUS_BADGE_META = {
+  pendiente_aprobacion: {
+    label: 'Pendiente de aprobación',
+    className: 'status-badge status-badge-amber'
+  },
+  aprobado: {
+    label: 'Aprobado',
+    className: 'status-badge status-badge-gold'
+  },
+  en_produccion: {
+    label: 'En producción',
+    className: 'status-badge status-badge-black'
+  },
+  en_arreglo: {
+    label: 'En arreglo / devolución',
+    className: 'status-badge status-badge-outline'
+  },
+  terminado: {
+    label: 'Terminado',
+    className: 'status-badge status-badge-slate'
+  },
+  entregado: {
+    label: 'Entregado',
+    className: 'status-badge status-badge-green'
+  },
+  anulado: {
+    label: 'Anulado',
+    className: 'status-badge status-badge-red'
+  }
+}
+
+const getStatusBadge = (status) =>
+  STATUS_BADGE_META[status] || STATUS_BADGE_META.pendiente_aprobacion
 
 // Ventana de consulta: no vuelve a llamar a la IA ni modifica el pedido.
 function AIValidationPopover({ order }) {
@@ -192,6 +231,17 @@ function AIValidationPopover({ order }) {
 }
 
 const historyCompactStyles = `
+.status-badge {
+  display:inline-flex; align-items:center; padding:4px 11px;
+  border-radius:999px; font-size:12px; font-weight:700; line-height:1.3;
+}
+.status-badge-amber { background:#fff4cc; color:#7a5e00; border:1px solid #f0d878; }
+.status-badge-gold { background:#ffc603; color:#1a1a1a; }
+.status-badge-black { background:#000000; color:#ffc603; }
+.status-badge-outline { background:transparent; color:#1a1a1a; border:1px solid #ffc603; }
+.status-badge-slate { background:#4b5563; color:#ffffff; }
+.status-badge-green { background:#16a34a; color:#ffffff; }
+.status-badge-red { background:#dc2626; color:#ffffff; }
 .orders-history-compact .history-order-image {
   width:100%; height:210px; object-fit:contain; background:#f7f8fa;
 }
@@ -620,6 +670,26 @@ const handleRegisterBalancePayment = async (order) => {
         }
       }
 
+      // Si el pedido tiene una vista previa subida a Firebase Storage,
+      // la borramos para no dejar imágenes huérfanas. Es una limpieza
+      // de mejor esfuerzo: si el archivo ya no existe o falla, no debe
+      // impedir que el pedido se elimine de Firestore.
+      if (order.previewPath || order.previewImage) {
+        try {
+          const previewRef = ref(
+            storage,
+            order.previewPath || order.previewImage
+          )
+
+          await deleteObject(previewRef)
+        } catch (storageError) {
+          console.warn(
+            'No se pudo eliminar la vista previa en Storage:',
+            storageError
+          )
+        }
+      }
+
       await deleteDoc(doc(db, 'orders', order.id))
 
       setOrders((prev) =>
@@ -637,7 +707,7 @@ const handleRegisterBalancePayment = async (order) => {
 Hola ${order.customerName || ''},
 
 Tu pedido está en estado: ${
-      order.status || 'pendiente_aprobacion'
+      getStatusBadge(order.status).label
     }
 
 Detalle:
@@ -815,7 +885,7 @@ ${order.previewImage || 'No disponible'}
     addDivider()
 
     addText(
-      `Estado del pedido: ${order.status || 'pendiente_aprobacion'}`
+      `Estado del pedido: ${getStatusBadge(order.status).label}`
     )
 
     y += 6
@@ -983,6 +1053,14 @@ ${order.previewImage || 'No disponible'}
               }
             />
 
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm mt-2"
+              disabled={!dateFilter}
+              onClick={() => setDateFilter('')}
+            >
+              Quitar filtro de fecha
+            </button>
           </div>
 
           <div className="col-md-6">
@@ -1124,19 +1202,11 @@ ${order.previewImage || 'No disponible'}
                   <p className="mb-1">
                     <strong>Estado:</strong>{' '}
                     <span
-                      className={`badge ${
-                        order.status === 'anulado'
-                          ? 'bg-danger'
-                          : order.status === 'entregado'
-                            ? 'bg-success'
-                            : order.status === 'en_produccion'
-                              ? 'bg-primary'
-                              : order.status === 'en_arreglo'
-                                ? 'bg-info text-dark'
-                                : 'bg-warning text-dark'
-                      }`}
+                      className={
+                        getStatusBadge(order.status).className
+                      }
                     >
-                      {order.status || 'pendiente_aprobacion'}
+                      {getStatusBadge(order.status).label}
                     </span>
                   </p>
 

@@ -299,7 +299,7 @@ function TextElement({
 
             fontSize:
               Math.max(
-                10,
+                18,
                 element.fontSize *
                   scaleX
               )
@@ -341,6 +341,7 @@ const GarmentEditor = forwardRef(function GarmentEditor({
   customerGarmentImage,
   customerGarment,
   customizationSide,
+  initialElements,
   onPreviewChange,
   onElementsChange,
   onSave
@@ -393,6 +394,22 @@ const GarmentEditor = forwardRef(function GarmentEditor({
     elements,
     setElements
   ] = useState([])
+
+  /* =======================================================
+     CARGAR PERSONALIZACIÓN DE UN PEDIDO EXISTENTE
+     (edición): el canvas arranca vacío, así que si venimos
+     a editar un pedido que ya tenía textos/imágenes, los
+     recuperamos aquí una sola vez.
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      Array.isArray(initialElements) &&
+      initialElements.length > 0
+    ) {
+      setElements(initialElements)
+    }
+  }, [initialElements])
 
   /* =======================================================
      COMUNICAR ELEMENTOS AL PADRE

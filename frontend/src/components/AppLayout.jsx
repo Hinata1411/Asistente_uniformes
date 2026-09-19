@@ -196,6 +196,15 @@ function AppLayout({ children }) {
         </nav>
 
         <div className="sidebar-footer">
+          <Link
+            to="/perfil"
+            className={`sidebar-link ${
+              isActive('/perfil') ? 'active' : ''
+            }`}
+          >
+            <span className="sidebar-icon">⚙</span>
+            Mi perfil
+          </Link>
           <div className="sidebar-user">
             <div className="user-avatar">
               {user?.email?.charAt(0).toUpperCase()}
@@ -205,7 +214,7 @@ function AppLayout({ children }) {
               <span className="user-email">{user?.email}</span>
 
               <span className="user-role">
-                {role === 'admin' ? 'Administrador' : 'Empleado'}
+                {role === 'admin' ? 'Administrador' : 'Colaborador'}
               </span>
             </div>
           </div>

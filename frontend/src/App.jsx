@@ -9,6 +9,7 @@ import AppLayout from './components/AppLayout'
 import ProductsPage from './pages/ProductsPage'
 import CreateProductPage from './pages/CreateProductPage'
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage'
+import ProfilePage from './pages/ProfilePage'
 import { useAuth } from './context/AuthContext'
 
 function ProtectedLayout({ children, allowedRoles }) {
@@ -112,6 +113,17 @@ function App() {
           element={
             <ProtectedLayout allowedRoles={['admin']}>
               <CreateProductPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/perfil"
+          element={
+            <ProtectedLayout
+              allowedRoles={['admin', 'empleado']}
+            >
+              <ProfilePage />
             </ProtectedLayout>
           }
         />

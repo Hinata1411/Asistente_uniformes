@@ -1,0 +1,58 @@
+/* =========================
+   INSIGNIAS DE ESTADO DEL PEDIDO
+   (paleta de marca: negro / dorado, con verde y rojo
+   solo para entregado y anulado, por convención)
+
+   Compartido por cualquier pantalla que muestre el estado
+   de un pedido (historial, panel de empleado, etc.) junto
+   con getStatusBadge() de services/orderFormatting.js, para
+   que el mismo estado se vea igual en toda la app.
+========================= */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.status-badge-amber {
+  background: #fff4cc;
+  color: #7a5e00;
+  border: 1px solid #f0d878;
+}
+
+.status-badge-gold {
+  background: #ffc603;
+  color: #1a1a1a;
+}
+
+.status-badge-black {
+  background: #000000;
+  color: #ffc603;
+}
+
+.status-badge-outline {
+  background: transparent;
+  color: #1a1a1a;
+  border: 1px solid #ffc603;
+}
+
+.status-badge-slate {
+  background: #4b5563;
+  color: #ffffff;
+}
+
+.status-badge-green {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.status-badge-red {
+  background: #dc2626;
+  color: #ffffff;
+}

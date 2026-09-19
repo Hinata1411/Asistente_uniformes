@@ -1,10 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 
 import { db } from '../firebase/config'
+import { useAuth } from '../context/AuthContext'
+import { getProductName, getStatusBadge } from '../services/orderFormatting'
+import '../styles/statusBadges.css'
+import './EmployeeDashboardPage.css'
+
+// Mismo criterio de saludo que usa el panel de administración,
+// para que ambas pantallas se sientan parte de la misma app.
+const getGreeting = (hour) => {
+  if (hour < 12) return 'Buenos días'
+  if (hour < 19) return 'Buenas tardes'
+  return 'Buenas noches'
+}
 
 function EmployeeDashboardPage() {
+  const { user } = useAuth()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -34,197 +47,194 @@ function EmployeeDashboardPage() {
     loadOrders()
   }, [])
 
-  const pendingOrders = orders.filter(
-    (order) =>
-      order.status === 'pendiente_aprobacion' ||
-      order.status === 'aprobado'
+  const greeting = getGreeting(new Date().getHours())
+
+  const displayName = user?.displayName?.trim()
+    ? user.displayName.trim().split(' ')[0]
+    : user?.email
+      ? user.email.split('@')[0]
+      : 'equipo'
+
+  const pendingOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) =>
+          order.status === 'pendiente_aprobacion' ||
+          order.status === 'aprobado'
+      ),
+    [orders]
   )
 
-  const productionOrders = orders.filter(
-    (order) =>
-      order.status === 'en_produccion'
+  const productionOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => order.status === 'en_produccion'
+      ),
+    [orders]
   )
 
-  const finishedOrders = orders.filter(
-    (order) =>
-      order.status === 'terminado'
+  const finishedOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => order.status === 'terminado'
+      ),
+    [orders]
   )
 
-  const recentOrders = [...orders]
-  .sort((a, b) => {
-    const dateA = new Date(a.createdAt || 0)
-    const dateB = new Date(b.createdAt || 0)
+  const recentOrders = useMemo(
+    () =>
+      [...orders]
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0)
+          const dateB = new Date(b.createdAt || 0)
 
-    return dateB - dateA
-  })
-  .slice(0, 5)
+          return dateB - dateA
+        })
+        .slice(0, 5),
+    [orders]
+  )
 
   if (loading) {
     return (
-      <div className="container py-4">
+      <div className="employee-dashboard container py-4">
         Cargando información...
       </div>
     )
   }
 
   return (
-    <div className="container py-4">
-      <div className="mb-4">
-        <h2>Panel operativo</h2>
+    <div className="employee-dashboard container py-4">
+      <div className="employee-header">
+        <div>
+          <h2 className="employee-greeting">
+            {greeting}, {displayName}
+          </h2>
 
-        <p className="text-muted">
-          Consulta los pedidos que requieren atención
-          y accede rápidamente a las tareas del día.
-        </p>
-      </div>
-
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-md-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
-              <span className="text-muted">
-                Pendientes
-              </span>
-
-              <h2 className="mt-2">
-                {pendingOrders.length}
-              </h2>
-
-              <p className="mb-0">
-                Pedidos pendientes de aprobación o inicio.
-              </p>
-            </div>
-          </div>
+          <p className="employee-subtitle">
+            Consulta los pedidos que requieren atención
+            y accede rápidamente a las tareas del día.
+          </p>
         </div>
 
-        <div className="col-12 col-md-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
-              <span className="text-muted">
-                En producción
-              </span>
+        <div className="employee-quick-actions">
+          <Link
+            to="/crearpedido"
+            className="btn btn-primary"
+          >
+            + Crear pedido
+          </Link>
 
-              <h2 className="mt-2">
-                {productionOrders.length}
-              </h2>
-
-              <p className="mb-0">
-                Pedidos que se encuentran en proceso.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-12 col-md-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
-              <span className="text-muted">
-                Terminados
-              </span>
-
-              <h2 className="mt-2">
-                {finishedOrders.length}
-              </h2>
-
-              <p className="mb-0">
-                Pedidos listos para continuar con entrega.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
 
-      <div className="card shadow-sm border-0">
-        <div className="card-body">
-          <h4 className="mb-3">
-            Acciones rápidas
-          </h4>
+      <div className="employee-stat-grid">
+        <div className="employee-stat-card">
+          <span className="employee-stat-label">
+            Pendientes
+          </span>
 
-        <div className="card shadow-sm border-0 mt-4">
-          <div className="card-body">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <div>
-                <h4 className="mb-1">
-                  Pedidos recientes
-                </h4>
+          <strong className="employee-stat-value">
+            {pendingOrders.length}
+          </strong>
 
-                <p className="text-muted mb-0">
-                  Consulta rápidamente los últimos pedidos registrados.
-                </p>
-              </div>
-
-              <Link
-                to="/historial"
-                className="btn btn-outline-primary btn-sm"
-              >
-                Ver todos
-              </Link>
-            </div>
-
-            {recentOrders.length === 0 ? (
-              <p className="text-muted mb-0">
-                No hay pedidos registrados.
-              </p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table align-middle mb-0">
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Prenda</th>
-                      <th>Técnica</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {recentOrders.map((order) => (
-                      <tr key={order.id}>
-                        <td>
-                          {order.customerName || 'No definido'}
-                        </td>
-
-                        <td>
-                          {order.productName ||
-                            order.product ||
-                            order.productType ||
-                            'No definida'}
-                        </td>
-
-                        <td>
-                          {order.technique || 'No definida'}
-                        </td>
-
-                        <td>
-                          <span className="badge bg-secondary">
-                            {order.status || 'pendiente_aprobacion'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <p className="employee-stat-desc">
+            Pedidos pendientes de aprobación o inicio.
+          </p>
         </div>
 
-          <div className="d-flex flex-wrap gap-2">
-            <Link
-              to="/crearpedido"
-              className="btn btn-primary"
-            >
-              Crear pedido
-            </Link>
+        <div className="employee-stat-card employee-stat-card-dark">
+          <span className="employee-stat-label">
+            En producción
+          </span>
 
-            <Link
-              to="/historial"
-              className="btn btn-outline-primary"
-            >
-              Consultar pedidos
-            </Link>
-          </div>
+          <strong className="employee-stat-value">
+            {productionOrders.length}
+          </strong>
+
+          <p className="employee-stat-desc">
+            Pedidos que se encuentran en proceso.
+          </p>
         </div>
+
+        <div className="employee-stat-card">
+          <span className="employee-stat-label">
+            Terminados
+          </span>
+
+          <strong className="employee-stat-value">
+            {finishedOrders.length}
+          </strong>
+
+          <p className="employee-stat-desc">
+            Pedidos listos para continuar con entrega.
+          </p>
+        </div>
+      </div>
+
+      <div className="employee-card">
+        <div className="employee-card-heading">
+          <div>
+            <h4>Pedidos recientes</h4>
+
+            <p>
+              Consulta rápidamente los últimos pedidos registrados.
+            </p>
+          </div>
+
+          <Link
+            to="/historial"
+            className="btn btn-outline-primary btn-sm"
+          >
+            Ver todos
+          </Link>
+        </div>
+
+        {recentOrders.length === 0 ? (
+          <p className="text-muted mb-0">
+            No hay pedidos registrados.
+          </p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table align-middle mb-0 employee-orders-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Prenda</th>
+                  <th>Técnica</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {recentOrders.map((order) => (
+                  <tr key={order.id}>
+                    <td>
+                      {order.customerName || 'No definido'}
+                    </td>
+
+                    <td>
+                      {getProductName(order)}
+                    </td>
+
+                    <td>
+                      {order.technique || 'No definida'}
+                    </td>
+
+                    <td>
+                      <span
+                        className={
+                          getStatusBadge(order.status).className
+                        }
+                      >
+                        {getStatusBadge(order.status).label}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

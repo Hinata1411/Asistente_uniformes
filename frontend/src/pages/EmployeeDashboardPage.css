@@ -1,0 +1,169 @@
+/* =========================
+   PANEL DE EMPLEADO
+   Misma paleta de marca que el panel de administración
+   (negro/dorado), pero con su propia identidad: menos
+   denso, más enfocado en las tareas del día a día que en
+   indicadores gerenciales.
+========================= */
+
+.employee-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 3px solid var(--brand-gold, #ffc603);
+}
+
+.employee-greeting {
+  margin: 0 0 4px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.employee-subtitle {
+  margin: 0;
+  max-width: 480px;
+  color: #6b7280;
+}
+
+.employee-quick-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* =========================
+   INDICADORES
+========================= */
+
+.employee-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.employee-stat-card {
+  background: #ffffff;
+  border: 1px solid #eee3bb;
+  border-left: 4px solid var(--brand-gold, #ffc603);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+/* La tarjeta "En producción" se resalta en negro: es la que
+   más le importa revisar al empleado en el día a día. */
+.employee-stat-card-dark {
+  background: #000000;
+  border-left-color: var(--brand-gold, #ffc603);
+}
+
+.employee-stat-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a7300;
+}
+
+.employee-stat-card-dark .employee-stat-label {
+  color: var(--brand-gold, #ffc603);
+}
+
+.employee-stat-value {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: #1a1a1a;
+}
+
+.employee-stat-card-dark .employee-stat-value {
+  color: #ffffff;
+}
+
+.employee-stat-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.employee-stat-card-dark .employee-stat-desc {
+  color: #d7d7d7;
+}
+
+/* =========================
+   PEDIDOS RECIENTES
+========================= */
+
+.employee-card {
+  background: #ffffff;
+  border: 1px solid #eee3bb;
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  padding: 20px 22px;
+}
+
+.employee-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.employee-card-heading h4 {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.employee-card-heading p {
+  margin: 0;
+  font-size: 13.5px;
+  color: #6b7280;
+}
+
+.employee-orders-table th {
+  padding-bottom: 10px;
+  border-bottom-width: 2px;
+  border-bottom-color: #f0e2ab;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a7300;
+}
+
+.employee-orders-table td {
+  font-size: 14px;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 575px) {
+  .employee-header {
+    align-items: flex-start;
+  }
+
+  .employee-quick-actions {
+    width: 100%;
+  }
+
+  .employee-quick-actions .btn {
+    flex: 1 1 auto;
+  }
+}

@@ -1407,7 +1407,7 @@ function CreateOrderPage() {
             >
               <option value="chico">Chico (8x10cm)</option>
               <option value="mediano">Mediano (16x20cm)</option>
-              <option value="grande">Grande (23x30cm)</option>
+              <option value="grande">Grande (30x23cm)</option>
             </select>
           </div>
 
@@ -1429,7 +1429,7 @@ function CreateOrderPage() {
               >
                 <option value="chico">Chico (8x10cm)</option>
                 <option value="mediano">Mediano (16x20cm)</option>
-                <option value="grande">Grande (23x30cm)</option>
+                <option value="grande">Grande (30x23cm)</option>
               </select>
             </div>
           )}
@@ -1618,6 +1618,10 @@ function CreateOrderPage() {
             form.customizationSide
           }
 
+          initialElements={
+            editingOrder?.elements || []
+          }
+
           onPreviewChange={
             (base64) =>
               setPreviewBase64(
@@ -1626,10 +1630,27 @@ function CreateOrderPage() {
           }
 
           onElementsChange={
-            (elements) =>
+            (newElements) => {
               setEditorElements(
-                elements
+                newElements
               )
+
+              /*
+                Si estamos editando un pedido y la personalización
+                ya cambió respecto a la que estaba guardada, la
+                validación de IA anterior queda desactualizada:
+                hay que forzar que se vuelva a validar antes de
+                poder guardar.
+              */
+              if (
+                editingOrder &&
+                aiResult &&
+                JSON.stringify(newElements) !==
+                  JSON.stringify(editingOrder.elements || [])
+              ) {
+                setAiResult(null)
+              }
+            }
           }
 
           onSave={

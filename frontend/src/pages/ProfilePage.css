@@ -61,8 +61,16 @@
 .profile-grid {
   display: grid;
   grid-template-columns:
-    minmax(250px, 0.8fr)
-    minmax(320px, 1.2fr);
+    minmax(280px, 0.9fr)
+    minmax(320px, 1.1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+/* Columna izquierda: "Información de la cuenta" + "Datos personales" apiladas */
+.profile-column {
+  display: flex;
+  flex-direction: column;
   gap: 24px;
 }
 
@@ -163,6 +171,32 @@
 .password-control button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+/* Campos simples de "Datos personales" (sin botón de mostrar/ocultar) */
+.profile-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cfd4dc;
+  border-radius: 10px;
+  outline: none;
+}
+
+.profile-input:focus {
+  border-color: #d8a900;
+  box-shadow: 0 0 0 3px
+    rgba(255, 196, 0, 0.18);
+}
+
+.profile-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.field-error {
+  margin-top: 6px;
+  color: #9e1c1c;
+  font-size: 0.85rem;
 }
 
 .password-requirements {

@@ -535,6 +535,32 @@ function CreateOrderPage() {
           previewStorageRef
         )
 
+      /*
+        No se debe pisar el dinero que ya se registró como pagado.
+        depositPaid/finalPaymentPaid representan pagos CONFIRMADOS
+        (se controlan desde el historial al aprobar/entregar un
+        pedido); si aquí los recalculábamos como el 50%/100% de la
+        cotización editada, una edición de talla/cantidad/técnica
+        borraba el pago inicial o final ya confirmado y el estado de
+        pago del pedido quedaba mal.
+      */
+      const actualPaidSoFar =
+        Number(editingOrder.depositPaid || 0) +
+        Number(editingOrder.finalPaymentPaid || 0)
+
+      const recalculatedBalanceDue =
+        Math.round(
+          Math.max(0, quoteTotal - actualPaidSoFar) * 100
+        ) / 100
+
+      // El "anticipo previsto" (referencia para cuando se apruebe)
+      // solo se actualiza con la nueva cotización si todavía no se
+      // ha confirmado ningún pago.
+      const nextInitialPaymentAmount =
+        actualPaidSoFar > 0
+          ? (editingOrder.initialPaymentAmount ?? editingOrder.depositPaid ?? depositPaid)
+          : depositPaid
+
       await runTransaction(
         db,
         async (transaction) => {
@@ -802,9 +828,16 @@ function CreateOrderPage() {
               paymentPlan:
                 form.paymentPlan,
 
-              depositPaid,
+              // depositPaid y finalPaymentPaid NO se tocan aquí: se
+              // dejan tal como estaban (el dinero ya confirmado como
+              // pagado se conserva). Solo se ajustan la referencia
+              // del anticipo previsto y el saldo pendiente según la
+              // nueva cotización.
+              initialPaymentAmount:
+                nextInitialPaymentAmount,
 
-              balanceDue,
+              balanceDue:
+                recalculatedBalanceDue,
 
               updatedAt:
                 new Date().toISOString()
@@ -1266,13 +1299,23 @@ function CreateOrderPage() {
               : 'Registra los datos del cliente, personaliza la prenda y valida el diseño antes de guardar.'}
           </p>
         </div>
+      </div>
 
-        {editingOrder && (
+      {editingOrder && (
+        <div className="editing-header-actions">
           <span className="editing-badge">
             Editando pedido
           </span>
-        )}
-      </div>
+
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => navigate('/historial')}
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
 
       {/* BOTÓN DE GUARDAR CIRCULAR FIJO (visible siempre, del inicio al final) */}
       <button

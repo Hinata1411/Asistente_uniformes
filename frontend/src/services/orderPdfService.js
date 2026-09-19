@@ -47,7 +47,65 @@ const getPaymentPdfColors = (badge) => {
   return { bg: [229, 231, 235], text: [55, 65, 81] }
 }
 
-export function generateOrderPdf(order) {
+/*
+  Convierte la vista previa (una URL de Firebase Storage) en un data
+  URL usando un <canvas>, que es lo que jsPDF necesita para poder
+  incrustar la imagen. jsPDF no puede descargar la imagen por sí
+  mismo: si se le pasa la URL remota tal cual, simplemente no la
+  dibuja.
+
+  Devuelve también el ancho/alto reales de la imagen para poder
+  encajarla en el recuadro del PDF sin deformarla.
+*/
+function loadImageAsDataUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0)
+
+        resolve({
+          dataUrl: canvas.toDataURL('image/png'),
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        })
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    img.onerror = () => {
+      reject(new Error('No se pudo cargar la vista previa del pedido.'))
+    }
+
+    img.src = url
+  })
+}
+
+export async function generateOrderPdf(order) {
+  // Se resuelve ANTES de dibujar nada: si la imagen no carga (sin
+  // conexión, CORS del bucket, etc.) el PDF sigue generándose igual,
+  // solo que sin la vista previa.
+  let previewImageData = null
+
+  if (order.previewImage) {
+    try {
+      previewImageData = await loadImageAsDataUrl(order.previewImage)
+    } catch (error) {
+      console.warn(
+        'No se pudo preparar la vista previa para el PDF:',
+        error
+      )
+    }
+  }
+
   const docPDF = new jsPDF()
   const pageWidth = docPDF.internal.pageSize.getWidth()
   const pageHeight = docPDF.internal.pageSize.getHeight()
@@ -329,9 +387,14 @@ export function generateOrderPdf(order) {
 
   if (aiValidation) {
     lineItem('Nivel de riesgo:', aiValidation.riskLevel || 'No definido')
-    lineItem(
-      'Compatibilidad técnica:',
-      aiValidation.techniqueCompatibility || 'No disponible'
+
+    y += 1
+    // "Compatibilidad técnica" puede ser una frase larga (no solo una
+    // palabra corta como el nivel de riesgo): con lineItem() el texto
+    // se dibuja alineado a la derecha sin salto de línea y se monta
+    // encima de la etiqueta cuando es largo. paragraph() sí lo envuelve.
+    paragraph(
+      `Compatibilidad técnica: ${aiValidation.techniqueCompatibility || 'No disponible'}`
     )
 
     y += 1
@@ -361,14 +424,35 @@ export function generateOrderPdf(order) {
   // VISTA PREVIA
   // =========================
 
-  if (order.previewBase64) {
-    ensureSpace(100)
+  if (previewImageData) {
+    const boxWidth = 80
+    const boxHeight = 95
+
+    ensureSpace(boxHeight + 5)
     heading('Vista previa')
 
+    // Encaja la imagen dentro del recuadro sin deformarla
+    // (mismo criterio que un "object-fit: contain").
+    const scale = Math.min(
+      boxWidth / previewImageData.width,
+      boxHeight / previewImageData.height
+    )
+    const drawWidth = previewImageData.width * scale
+    const drawHeight = previewImageData.height * scale
+    const offsetX = marginX + (boxWidth - drawWidth) / 2
+    const offsetY = y + (boxHeight - drawHeight) / 2
+
     docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
-    docPDF.rect(marginX, y, 80, 95)
-    docPDF.addImage(order.previewBase64, 'PNG', marginX, y, 80, 95)
-    y += 100
+    docPDF.rect(marginX, y, boxWidth, boxHeight)
+    docPDF.addImage(
+      previewImageData.dataUrl,
+      'PNG',
+      offsetX,
+      offsetY,
+      drawWidth,
+      drawHeight
+    )
+    y += boxHeight + 5
   } else {
     heading('Vista previa')
     paragraph('Vista previa no disponible para este pedido.')

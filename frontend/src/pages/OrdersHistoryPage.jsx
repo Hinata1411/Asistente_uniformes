@@ -796,9 +796,20 @@ ${order.previewImage || 'No disponible'}
                   <div className="history-actions-row">
                     <button
                       className="btn btn-outline-primary"
-                      onClick={() =>
-                        generateOrderPdf(order)
-                      }
+                      onClick={async () => {
+                        try {
+                          await generateOrderPdf(order)
+                        } catch (error) {
+                          console.error(
+                            'Error generando el PDF del pedido:',
+                            error
+                          )
+                          notify(
+                            'No se pudo generar el PDF del pedido',
+                            'error'
+                          )
+                        }
+                      }}
                     >
                       Descargar pedido PDF
                     </button>

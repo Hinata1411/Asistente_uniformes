@@ -60,8 +60,8 @@ export const getPaymentSummary = (order) => {
   let badge = 'bg-secondary'
 
   if (balance === 0) {
-    status = order.status === 'entregado' ? 'entregado_pagado' : 'pagado'
-    label = order.status === 'entregado' ? 'Entregado y pagado' : 'Pagado'
+    status = 'pagado'
+    label = 'Pagado'
     badge = 'bg-success'
   } else if (paid > 0) {
     status = 'pago_parcial'

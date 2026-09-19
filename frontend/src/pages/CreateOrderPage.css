@@ -164,6 +164,14 @@
   }
 }
 
+.editing-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  margin: -14px 0 22px;
+}
+
 .editing-badge {
   display: inline-flex;
   align-items: center;
@@ -203,7 +211,7 @@
 
   border-radius: 10px;
   background: #eef2ff;
-  color: #000000;
+  color: #08080c;
 
   font-size: 14px;
   font-weight: 800;
@@ -211,7 +219,7 @@
 
 .ai-number {
   background: #f3e8ff;
-  color: #bb8c0a;
+  color: #8a7e12;
   font-size: 16px;
 }
 
@@ -286,7 +294,7 @@
   border: 0;
   border-radius: 10px;
 
-  background: linear-gradient(135deg, #f1c674, #463b1f);
+  background: linear-gradient(135deg, #dab332, rgb(126, 88, 19));
   color: #ffffff;
 
   font-size: 14px;
@@ -333,7 +341,7 @@
   display: block;
   margin-bottom: 3px;
 
-  color: #995e12;
+  color: #da9a6f;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;

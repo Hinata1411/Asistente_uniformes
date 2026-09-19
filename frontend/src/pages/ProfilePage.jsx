@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   EmailAuthProvider,
@@ -6,7 +6,9 @@ import {
   updatePassword
 } from 'firebase/auth'
 
-import { auth } from '../firebase/config'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
+
+import { auth, db } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 
 import './ProfilePage.css'
@@ -81,6 +83,19 @@ function EyeOffIcon() {
   )
 }
 
+const ROLE_LABELS = {
+  admin: 'Administrador',
+  empleado: 'Empleado'
+}
+
+const STATUS_LABELS = {
+  activo: 'Activo',
+  inactivo: 'Inactivo'
+}
+
+// Teléfono flexible: dígitos, espacios, guiones y un + opcional al inicio.
+const PHONE_REGEX = /^\+?[0-9\s-]{6,15}$/
+
 const validatePassword = (password) => {
   if (password.length < 8) {
     return 'La contraseña debe tener al menos 8 caracteres.'
@@ -136,45 +151,131 @@ const getFirebaseErrorMessage = (error) => {
 function ProfilePage() {
   const { user, role } = useAuth()
 
-  const [currentPassword, setCurrentPassword] =
-    useState('')
+  // =========================================
+  // DATOS PERSONALES (nombre y teléfono)
+  // Documento Firestore users/{uid}: name, phone, status, role.
+  // =========================================
 
-  const [newPassword, setNewPassword] =
-    useState('')
+  const [profile, setProfile] = useState(null)
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [savingInfo, setSavingInfo] = useState(false)
+  const [infoForm, setInfoForm] = useState({ name: '', phone: '' })
+  const [infoErrors, setInfoErrors] = useState({})
+  const [infoFeedback, setInfoFeedback] = useState(null)
 
-  const [confirmPassword, setConfirmPassword] =
-    useState('')
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user?.uid) return
 
-  const [
-    showCurrentPassword,
-    setShowCurrentPassword
-  ] = useState(false)
+      try {
+        setLoadingProfile(true)
 
-  const [
-    showNewPassword,
-    setShowNewPassword
-  ] = useState(false)
+        const userRef = doc(db, 'users', user.uid)
+        const userSnap = await getDoc(userRef)
 
-  const [
-    showConfirmPassword,
-    setShowConfirmPassword
-  ] = useState(false)
+        if (userSnap.exists()) {
+          const data = userSnap.data()
 
-  const [loading, setLoading] =
-    useState(false)
+          setProfile(data)
+          setInfoForm({
+            name: data.name || '',
+            phone: data.phone || ''
+          })
+        }
+      } catch (error) {
+        console.error('Error cargando el perfil:', error)
+        setInfoFeedback({
+          type: 'error',
+          message: 'No se pudo cargar tu información personal.'
+        })
+      } finally {
+        setLoadingProfile(false)
+      }
+    }
 
-  const [successMessage, setSuccessMessage] =
-    useState('')
+    loadProfile()
+  }, [user?.uid])
 
-  const [errorMessage, setErrorMessage] =
-    useState('')
-
-  const clearMessages = () => {
-    setSuccessMessage('')
-    setErrorMessage('')
+  const handleInfoChange = (field) => (event) => {
+    setInfoForm((prev) => ({ ...prev, [field]: event.target.value }))
+    setInfoErrors((prev) => ({ ...prev, [field]: null }))
   }
 
-  const clearForm = () => {
+  const validateInfo = () => {
+    const nextErrors = {}
+
+    if (!infoForm.name.trim()) {
+      nextErrors.name = 'El nombre es obligatorio.'
+    }
+
+    if (infoForm.phone.trim() && !PHONE_REGEX.test(infoForm.phone.trim())) {
+      nextErrors.phone = 'Ingresa un teléfono válido.'
+    }
+
+    setInfoErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  const handleInfoSubmit = async (event) => {
+    event.preventDefault()
+    setInfoFeedback(null)
+
+    if (!validateInfo()) return
+
+    const updates = {
+      name: infoForm.name.trim(),
+      phone: infoForm.phone.trim()
+    }
+
+    try {
+      setSavingInfo(true)
+
+      await updateDoc(doc(db, 'users', user.uid), updates)
+
+      // Se refleja de inmediato en pantalla, sin recargar ni
+      // pedir que se vuelva a iniciar sesión.
+      setProfile((prev) => ({ ...prev, ...updates }))
+
+      setInfoFeedback({
+        type: 'success',
+        message: 'Tu información personal se actualizó correctamente.'
+      })
+    } catch (error) {
+      console.error('Error actualizando el perfil:', error)
+      // No se toca `profile` ni `infoForm`: si falla, lo que ya
+      // estaba guardado sigue visible tal como estaba.
+      setInfoFeedback({
+        type: 'error',
+        message:
+          'No se pudo guardar el cambio. Tu información anterior sigue intacta, intenta de nuevo.'
+      })
+    } finally {
+      setSavingInfo(false)
+    }
+  }
+
+  // =========================================
+  // CAMBIO DE CONTRASEÑA
+  // =========================================
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  const [loadingPassword, setLoadingPassword] = useState(false)
+  const [passwordSuccessMessage, setPasswordSuccessMessage] = useState('')
+  const [passwordErrorMessage, setPasswordErrorMessage] = useState('')
+
+  const clearPasswordMessages = () => {
+    setPasswordSuccessMessage('')
+    setPasswordErrorMessage('')
+  }
+
+  const clearPasswordForm = () => {
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
@@ -184,107 +285,68 @@ function ProfilePage() {
     setShowConfirmPassword(false)
   }
 
-  const handleSubmit = async (event) => {
+  const handlePasswordSubmit = async (event) => {
     event.preventDefault()
 
-    clearMessages()
+    clearPasswordMessages()
 
     if (!user || !auth.currentUser) {
-      setErrorMessage(
-        'No se encontró una sesión activa.'
-      )
+      setPasswordErrorMessage('No se encontró una sesión activa.')
       return
     }
 
     if (!user.email) {
-      setErrorMessage(
+      setPasswordErrorMessage(
         'La cuenta no tiene un correo electrónico disponible para realizar la verificación.'
       )
       return
     }
 
-    if (
-      !currentPassword ||
-      !newPassword ||
-      !confirmPassword
-    ) {
-      setErrorMessage(
-        'Completa todos los campos.'
-      )
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordErrorMessage('Completa todos los campos.')
       return
     }
 
     if (newPassword !== confirmPassword) {
-      setErrorMessage(
+      setPasswordErrorMessage(
         'La nueva contraseña y su confirmación no coinciden.'
       )
       return
     }
 
     if (currentPassword === newPassword) {
-      setErrorMessage(
+      setPasswordErrorMessage(
         'La nueva contraseña debe ser diferente de la contraseña actual.'
       )
       return
     }
 
-    const passwordValidation =
-      validatePassword(newPassword)
+    const passwordValidation = validatePassword(newPassword)
 
     if (passwordValidation) {
-      setErrorMessage(passwordValidation)
+      setPasswordErrorMessage(passwordValidation)
       return
     }
 
     try {
-      setLoading(true)
+      setLoadingPassword(true)
 
-      /*
-        La credencial se crea temporalmente para
-        comprobar la contraseña actual.
-
-        No se guarda en Firestore ni en localStorage.
-      */
-      const credential =
-        EmailAuthProvider.credential(
-          user.email,
-          currentPassword
-        )
-
-      /*
-        Firebase solicita autenticación reciente
-        para esta operación sensible.
-      */
-      await reauthenticateWithCredential(
-        auth.currentUser,
-        credential
+      const credential = EmailAuthProvider.credential(
+        user.email,
+        currentPassword
       )
 
-      /*
-        Firebase Authentication actualiza
-        la contraseña de forma segura.
-      */
-      await updatePassword(
-        auth.currentUser,
-        newPassword
-      )
+      await reauthenticateWithCredential(auth.currentUser, credential)
+      await updatePassword(auth.currentUser, newPassword)
 
-      clearForm()
+      clearPasswordForm()
 
-      setSuccessMessage(
-        'Contraseña actualizada correctamente.'
-      )
+      setPasswordSuccessMessage('Contraseña actualizada correctamente.')
     } catch (error) {
-      console.error(
-        'Error cambiando contraseña:',
-        error
-      )
-
-      setErrorMessage(
-        getFirebaseErrorMessage(error)
-      )
+      console.error('Error cambiando contraseña:', error)
+      setPasswordErrorMessage(getFirebaseErrorMessage(error))
     } finally {
-      setLoading(false)
+      setLoadingPassword(false)
     }
   }
 
@@ -292,112 +354,164 @@ function ProfilePage() {
     <div className="profile-page">
       <div className="profile-header">
         <div>
-          <span className="profile-eyebrow">
-            Seguridad de la cuenta
-          </span>
+          <span className="profile-eyebrow">Mi cuenta</span>
 
           <h2>Mi perfil</h2>
 
           <p>
-            Consulta los datos de tu cuenta y cambia tu
-            contraseña de forma segura.
+            Consulta tus datos, actualiza tu información personal y
+            cambia tu contraseña de forma segura.
           </p>
         </div>
 
         <div className="profile-avatar">
-          {user?.email
-            ?.charAt(0)
-            .toUpperCase() || '?'}
+          {user?.email?.charAt(0).toUpperCase() || '?'}
         </div>
       </div>
 
       <div className="profile-grid">
-        <section className="profile-card">
-          <h3>Información de la cuenta</h3>
+        <div className="profile-column">
+          <section className="profile-card">
+            <h3>Información de la cuenta</h3>
 
-          <div className="profile-information">
-            <div>
-              <span>Correo electrónico</span>
+            <div className="profile-information">
+              <div>
+                <span>Correo electrónico</span>
 
-              <strong>
-                {user?.email || 'No disponible'}
-              </strong>
+                <strong>{user?.email || 'No disponible'}</strong>
+              </div>
+
+              <div>
+                <span>Rol en el sistema</span>
+
+                <strong>
+                  {ROLE_LABELS[role] || role || 'Sin rol asignado'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Estado</span>
+
+                <strong>
+                  {STATUS_LABELS[profile?.status] ||
+                    profile?.status ||
+                    'Activo'}
+                </strong>
+              </div>
             </div>
 
-            <div>
-              <span>Rol en el sistema</span>
+            <div className="profile-security-note">
+              <span aria-hidden="true">🔒</span>
 
-              <strong>
-                {role === 'admin'
-                  ? 'Administrador'
-                  : role === 'empleado'
-                    ? 'Empleado'
-                    : 'Sin rol asignado'}
-              </strong>
+              <span>
+                Tu rol y tu estado los administra un administrador;
+                no puedes modificarlos desde aquí.
+              </span>
             </div>
-          </div>
+          </section>
 
-          <div className="profile-security-note">
-            <span aria-hidden="true">🔒</span>
+          <section className="profile-card">
+            <h3>Datos personales</h3>
 
-            <span>
-              El cambio de contraseña no modifica tu
-              correo electrónico, rol ni información
-              del perfil.
-            </span>
-          </div>
-        </section>
+            <p className="profile-description">
+              Actualiza tu nombre y tu teléfono de contacto.
+            </p>
+
+            {infoFeedback && (
+              <div
+                className={`profile-alert ${infoFeedback.type}`}
+                role={infoFeedback.type === 'error' ? 'alert' : 'status'}
+              >
+                {infoFeedback.message}
+              </div>
+            )}
+
+            {loadingProfile ? (
+              <p className="profile-description">Cargando...</p>
+            ) : (
+              <form onSubmit={handleInfoSubmit}>
+                <div className="password-field">
+                  <label htmlFor="profileName">Nombre completo</label>
+
+                  <input
+                    id="profileName"
+                    type="text"
+                    className="profile-input"
+                    value={infoForm.name}
+                    onChange={handleInfoChange('name')}
+                    disabled={savingInfo}
+                  />
+
+                  {infoErrors.name && (
+                    <div className="field-error">{infoErrors.name}</div>
+                  )}
+                </div>
+
+                <div className="password-field">
+                  <label htmlFor="profilePhone">Teléfono</label>
+
+                  <input
+                    id="profilePhone"
+                    type="tel"
+                    className="profile-input"
+                    value={infoForm.phone}
+                    onChange={handleInfoChange('phone')}
+                    disabled={savingInfo}
+                    placeholder="Ej. 5555-5555"
+                  />
+
+                  {infoErrors.phone && (
+                    <div className="field-error">{infoErrors.phone}</div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="change-password-button"
+                  disabled={savingInfo}
+                >
+                  {savingInfo ? 'Guardando...' : 'Guardar datos personales'}
+                </button>
+              </form>
+            )}
+          </section>
+        </div>
 
         <section className="profile-card">
           <h3>Cambiar contraseña</h3>
 
           <p className="profile-description">
-            Por seguridad, primero debes confirmar tu
-            contraseña actual.
+            Por seguridad, primero debes confirmar tu contraseña
+            actual.
           </p>
 
-          {successMessage && (
-            <div
-              className="profile-alert success"
-              role="status"
-            >
-              {successMessage}
+          {passwordSuccessMessage && (
+            <div className="profile-alert success" role="status">
+              {passwordSuccessMessage}
             </div>
           )}
 
-          {errorMessage && (
-            <div
-              className="profile-alert error"
-              role="alert"
-            >
-              {errorMessage}
+          {passwordErrorMessage && (
+            <div className="profile-alert error" role="alert">
+              {passwordErrorMessage}
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handlePasswordSubmit}>
             <div className="password-field">
-              <label htmlFor="currentPassword">
-                Contraseña actual
-              </label>
+              <label htmlFor="currentPassword">Contraseña actual</label>
 
               <div className="password-control">
                 <input
                   id="currentPassword"
-                  type={
-                    showCurrentPassword
-                      ? 'text'
-                      : 'password'
-                  }
+                  type={showCurrentPassword ? 'text' : 'password'}
                   value={currentPassword}
                   onChange={(event) => {
-                    setCurrentPassword(
-                      event.target.value
-                    )
-
-                    clearMessages()
+                    setCurrentPassword(event.target.value)
+                    clearPasswordMessages()
                   }}
                   autoComplete="current-password"
-                  disabled={loading}
+                  disabled={loadingPassword}
                   required
                 />
 
@@ -405,11 +519,9 @@ function ProfilePage() {
                   type="button"
                   className="password-toggle"
                   onClick={() =>
-                    setShowCurrentPassword(
-                      (previous) => !previous
-                    )
+                    setShowCurrentPassword((previous) => !previous)
                   }
-                  disabled={loading}
+                  disabled={loadingPassword}
                   aria-label={
                     showCurrentPassword
                       ? 'Ocultar contraseña actual'
@@ -421,36 +533,25 @@ function ProfilePage() {
                       : 'Mostrar contraseña'
                   }
                 >
-                  {showCurrentPassword
-                    ? <EyeOffIcon />
-                    : <EyeIcon />}
+                  {showCurrentPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
             </div>
 
             <div className="password-field">
-              <label htmlFor="newPassword">
-                Nueva contraseña
-              </label>
+              <label htmlFor="newPassword">Nueva contraseña</label>
 
               <div className="password-control">
                 <input
                   id="newPassword"
-                  type={
-                    showNewPassword
-                      ? 'text'
-                      : 'password'
-                  }
+                  type={showNewPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(event) => {
-                    setNewPassword(
-                      event.target.value
-                    )
-
-                    clearMessages()
+                    setNewPassword(event.target.value)
+                    clearPasswordMessages()
                   }}
                   autoComplete="new-password"
-                  disabled={loading}
+                  disabled={loadingPassword}
                   minLength={8}
                   required
                 />
@@ -459,11 +560,9 @@ function ProfilePage() {
                   type="button"
                   className="password-toggle"
                   onClick={() =>
-                    setShowNewPassword(
-                      (previous) => !previous
-                    )
+                    setShowNewPassword((previous) => !previous)
                   }
-                  disabled={loading}
+                  disabled={loadingPassword}
                   aria-label={
                     showNewPassword
                       ? 'Ocultar nueva contraseña'
@@ -475,9 +574,7 @@ function ProfilePage() {
                       : 'Mostrar contraseña'
                   }
                 >
-                  {showNewPassword
-                    ? <EyeOffIcon />
-                    : <EyeIcon />}
+                  {showNewPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
             </div>
@@ -490,21 +587,14 @@ function ProfilePage() {
               <div className="password-control">
                 <input
                   id="confirmPassword"
-                  type={
-                    showConfirmPassword
-                      ? 'text'
-                      : 'password'
-                  }
+                  type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(event) => {
-                    setConfirmPassword(
-                      event.target.value
-                    )
-
-                    clearMessages()
+                    setConfirmPassword(event.target.value)
+                    clearPasswordMessages()
                   }}
                   autoComplete="new-password"
-                  disabled={loading}
+                  disabled={loadingPassword}
                   minLength={8}
                   required
                 />
@@ -513,11 +603,9 @@ function ProfilePage() {
                   type="button"
                   className="password-toggle"
                   onClick={() =>
-                    setShowConfirmPassword(
-                      (previous) => !previous
-                    )
+                    setShowConfirmPassword((previous) => !previous)
                   }
-                  disabled={loading}
+                  disabled={loadingPassword}
                   aria-label={
                     showConfirmPassword
                       ? 'Ocultar confirmación'
@@ -529,17 +617,13 @@ function ProfilePage() {
                       : 'Mostrar contraseña'
                   }
                 >
-                  {showConfirmPassword
-                    ? <EyeOffIcon />
-                    : <EyeIcon />}
+                  {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
             </div>
 
             <div className="password-requirements">
-              <strong>
-                La contraseña debe contener:
-              </strong>
+              <strong>La contraseña debe contener:</strong>
 
               <ul>
                 <li>Al menos 8 caracteres.</li>
@@ -552,9 +636,9 @@ function ProfilePage() {
             <button
               type="submit"
               className="change-password-button"
-              disabled={loading}
+              disabled={loadingPassword}
             >
-              {loading
+              {loadingPassword
                 ? 'Actualizando contraseña...'
                 : 'Actualizar contraseña'}
             </button>

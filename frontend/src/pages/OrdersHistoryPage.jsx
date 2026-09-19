@@ -398,6 +398,11 @@ const handleRegisterBalancePayment = async (order) => {
   }
 
   const handleCancelOrder = async (order) => {
+    if (!isAdmin) {
+      alert('Solo un administrador puede anular pedidos.')
+      return
+    }
+
     const reason = window.prompt(
       'Motivo de anulación del pedido:'
     )
@@ -434,6 +439,11 @@ const handleRegisterBalancePayment = async (order) => {
   }
 
   const handleDeleteOrder = async (order) => {
+    if (!isAdmin) {
+      alert('Solo un administrador puede eliminar pedidos.')
+      return
+    }
+
     const willRestock =
       (order.garmentSource === 'inventory' || !order.garmentSource) &&
       order.productId &&
@@ -767,9 +777,11 @@ ${order.previewImage || 'No disponible'}
                         <option value="entregado">
                           Entregado
                         </option>
-                        <option value="anulado">
-                          Anulado
-                        </option>
+                        {(isAdmin || isCancelled) && (
+                          <option value="anulado">
+                            Anulado
+                          </option>
+                        )}
                       </select>
                     </div>
                   </div>
@@ -822,15 +834,17 @@ ${order.previewImage || 'No disponible'}
                       Editar datos
                     </button>
 
-                    <button
-                      className="btn btn-danger"
-                      onClick={() =>
-                        handleCancelOrder(order)
-                      }
-                      disabled={isCancelled}
-                    >
-                      Anular
-                    </button>
+                    {isAdmin && (
+                      <button
+                        className="btn btn-danger"
+                        onClick={() =>
+                          handleCancelOrder(order)
+                        }
+                        disabled={isCancelled}
+                      >
+                        Anular
+                      </button>
+                    )}
 
                     {payment.balance > 0 &&
                       ['aprobado', 'en_produccion', 'en_arreglo', 'terminado'].includes(order.status) && (

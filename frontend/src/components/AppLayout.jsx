@@ -198,12 +198,16 @@ function AppLayout({ children }) {
         <div className="sidebar-footer">
           <Link
             to="/perfil"
+            onClick={handleNavClick}
             className={`sidebar-link ${
               isActive('/perfil') ? 'active' : ''
             }`}
           >
             <span className="sidebar-icon">⚙</span>
-            Mi perfil
+
+            <span className="sidebar-label">
+              Mi perfil
+            </span>
           </Link>
           <div className="sidebar-user">
             <div className="user-avatar">

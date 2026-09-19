@@ -1,29 +1,266 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useId } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { db } from '../firebase/config'
 import {
   collection,
   getDocs,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  arrayUnion,
+  getDoc
 } from 'firebase/firestore'
 import jsPDF from 'jspdf'
 import OrderAIValidationDetails from '../components/OrderAIValidationDetails'
+import { useAuth } from '../context/AuthContext'
+
+// Obtener el nombre desde los campos disponibles del pedido.
+const localDateValue = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parsed = new Date(`${value}T12:00:00`)
+    if (!Number.isFinite(parsed.getTime())) return ''
+    const normalized = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+    return normalized === value ? value : ''
+  }
+  try {
+    const date = typeof value.toDate === 'function'
+      ? value.toDate()
+      : value.seconds != null
+        ? new Date(value.seconds * 1000)
+        : new Date(value)
+    if (!Number.isFinite(date.getTime())) return ''
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  } catch { return '' }
+}
+
+const displayOrderDate = (value) => {
+  const date = localDateValue(value)
+  return date ? date.split('-').reverse().join('/') : 'No registrada'
+}
+
+const getProductName = (order) => {
+  const candidates = [
+    order.productName,
+    typeof order.product === 'string'
+      ? order.product
+      : order.product?.name,
+    order.productType
+  ]
+
+  const name = candidates.find(
+    (value) =>
+      typeof value === 'string' &&
+      value.trim().length > 0
+  )
+
+  return name?.trim() || 'Prenda sin nombre registrado'
+}
+
+
+const getPaymentSummary = (order) => {
+  const cents = (value) => {
+    const number = Number(value)
+    return Number.isFinite(number) ? Math.max(0, Math.round(number * 100)) : 0
+  }
+  const total = cents(order.quoteTotal)
+  const initial = cents(order.depositPaid)
+  const final = cents(order.finalPaymentPaid)
+  const paid = initial + final
+  const balance = Math.max(0, total - paid)
+  let status = 'pendiente_pago'
+  let label = 'Pendiente de pago'
+  let badge = 'bg-secondary'
+
+  if (balance === 0) {
+    status = order.status === 'entregado' ? 'entregado_pagado' : 'pagado'
+    label = order.status === 'entregado' ? 'Entregado y pagado' : 'Pagado'
+    badge = 'bg-success'
+  } else if (paid > 0) {
+    status = 'pago_parcial'
+    label = 'Pago parcial'
+    badge = 'bg-warning text-dark'
+  }
+
+  return {
+    total: total / 100,
+    initial: initial / 100,
+    final: final / 100,
+    paid: paid / 100,
+    balance: balance / 100,
+    status, label, badge
+  }
+}
+
+// Ventana de consulta: no vuelve a llamar a la IA ni modifica el pedido.
+function AIValidationPopover({ order }) {
+  const [open, setOpen] = useState(false)
+  const pinned = useRef(false)
+  const container = useRef(null)
+  const trigger = useRef(null)
+  const panelId = useId()
+
+  const close = () => {
+    pinned.current = false
+    setOpen(false)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const onOutside = (event) => {
+      if (!container.current?.contains(event.target)) close()
+    }
+    const onEscape = (event) => {
+      if (event.key === 'Escape') {
+        close()
+        if (container.current?.contains(document.activeElement)) {
+          trigger.current?.focus()
+          setOpen(false)
+        }
+      }
+    }
+    document.addEventListener('pointerdown', onOutside)
+    document.addEventListener('keydown', onEscape)
+    return () => {
+      document.removeEventListener('pointerdown', onOutside)
+      document.removeEventListener('keydown', onEscape)
+    }
+  }, [open])
+
+  return (
+    <div
+      className="history-ai"
+      ref={container}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => {
+        if (!pinned.current && !container.current?.contains(document.activeElement)) {
+          setOpen(false)
+        }
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) close()
+      }}
+    >
+      <button
+        ref={trigger}
+        type="button"
+        className="history-ai-button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onFocus={() => setOpen(true)}
+        onClick={() => {
+          pinned.current = !pinned.current
+          setOpen(pinned.current)
+        }}
+      >
+        <span aria-hidden="true">🤖</span> Ver validación inteligente
+      </button>
+      {open && (
+        <div className="history-ai-position">
+          <section
+            id={panelId}
+            className="history-ai-panel"
+            aria-label="Validación inteligente del pedido"
+            tabIndex={0}
+          >
+            <div className="history-ai-heading">
+              <strong>Validación inteligente</strong>
+              <button
+                type="button"
+                className="history-ai-close"
+                aria-label="Cerrar validación inteligente"
+                onClick={() => {
+                  trigger.current?.focus()
+                  close()
+                }}
+              >×</button>
+            </div>
+            {order.aiValidation ? (
+              <OrderAIValidationDetails
+                validation={order.aiValidation}
+                validatedAt={order.aiValidatedAt}
+              />
+            ) : (
+              <p className="mb-0 text-muted">Este pedido no tiene una validación guardada.</p>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const historyCompactStyles = `
+.orders-history-compact .history-order-image {
+  width:100%; height:210px; object-fit:contain; background:#f7f8fa;
+}
+.orders-history-compact .history-card-heading {
+  display:flex; justify-content:space-between; align-items:flex-start;
+  flex-wrap:wrap; gap:12px; margin-bottom:10px;
+}
+.orders-history-compact .history-card-heading h5 { margin:0; }
+.orders-history-compact .history-ai { position:relative; margin-left:auto; }
+.orders-history-compact .history-ai-button {
+  border:1px solid #e6bd00; background:#fff6cc; color:#242424;
+  border-radius:10px; padding:9px 13px; font-size:13px; font-weight:600;
+  display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+  transition:background .15s ease, box-shadow .15s ease;
+}
+.orders-history-compact .history-ai-button:hover { background:#ffdf65; }
+.orders-history-compact .history-ai-button:focus-visible,
+.orders-history-compact .history-ai-close:focus-visible {
+  outline:3px solid #705800; outline-offset:3px;
+}
+.orders-history-compact .history-ai-position {
+  position:absolute; top:100%; right:0; padding-top:8px;
+  width:min(520px, calc(100vw - 64px)); z-index:1050;
+}
+.orders-history-compact .history-ai-panel {
+  background:#fff; color:#222; border:1px solid #e6e8ed;
+  border-top:3px solid #ffd000; border-radius:12px;
+  box-shadow:0 14px 40px rgba(0,0,0,.18); padding:16px;
+  max-height:min(460px, 65vh); overflow:auto; overflow-wrap:anywhere;
+  font-size:13px;
+}
+.orders-history-compact .history-ai-heading {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:12px; margin-bottom:12px;
+}
+.orders-history-compact .history-ai-close {
+  background:#f1f2f4; border:0; border-radius:7px;
+  width:32px; height:32px; font-size:22px; cursor:pointer;
+}
+@media (max-width:767px) {
+  .orders-history-compact .history-order-image { height:160px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .orders-history-compact .history-ai-button { transition:none; }
+}
+`
 
 function OrdersHistoryPage() {
+  const { role } = useAuth()
+  const isAdmin = role === 'admin'
+
   const [orders, setOrders] = useState([])
-  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
 
+  const navigate = useNavigate()
+
   const loadOrders = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'orders'))
+      const querySnapshot = await getDocs(
+        collection(db, 'orders')
+      )
 
-      const ordersData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data()
-      }))
+      const ordersData = querySnapshot.docs.map(
+        (orderDoc) => ({
+          ...orderDoc.data(),
+          id: orderDoc.id
+        })
+      )
 
       setOrders(ordersData)
     } catch (error) {
@@ -35,60 +272,204 @@ function OrdersHistoryPage() {
     loadOrders()
   }, [])
 
-  const handleRegisterBalancePayment = async (order) => {
+  const handleChangeStatus = async (orderId, newStatus) => {
+  const order = orders.find((item) => item.id === orderId)
+
+  if (!order || order.status === newStatus) return
+
+  if (newStatus === 'anulado') {
+    await handleCancelOrder(order)
+    return
+  }
+
+  const allowedStatuses = [
+    'pendiente_aprobacion',
+    'aprobado',
+    'en_produccion',
+    'terminado',
+    'entregado'
+  ]
+
+  if (!allowedStatuses.includes(newStatus)) return
+
+  const total = Number(order.quoteTotal)
+
+  if (!Number.isFinite(total) || total < 0) {
+    alert('El pedido no tiene un total válido.')
+    return
+  }
+
+  const roundMoney = (value) =>
+    Math.round((value + Number.EPSILON) * 100) / 100
+
+  // Recuperar el pago inicial sin usar el saldo que pudo
+  // haberse puesto en cero al entregar.
+  let initialPayment = Number(order.initialPaymentAmount)
+
+  if (
+    order.initialPaymentAmount == null ||
+    !Number.isFinite(initialPayment)
+  ) {
+    const previousDeposit = Number(order.depositPaid)
+
+    // Compatibilidad con pedidos anteriores.
+    if (
+      Number.isFinite(previousDeposit) &&
+      previousDeposit > 0
+    ) {
+      initialPayment = previousDeposit
+    } else {
+      initialPayment =
+        order.paymentPlan === 'completo'
+          ? total
+          : roundMoney(total * 0.5)
+    }
+  }
+
+  initialPayment = roundMoney(
+    Math.min(total, Math.max(0, initialPayment))
+  )
+
+  const previousStatus =
+    order.status || 'pendiente_aprobacion'
+
+  // Los pedidos nuevos deben pasar primero por aprobación.
+  if (
+    previousStatus === 'pendiente_aprobacion' &&
+    newStatus !== 'aprobado'
+  ) {
+    alert('Primero debes aprobar el pedido y confirmar el pago inicial.')
+    return
+  }
+
+  if (
+    previousStatus === 'pendiente_aprobacion' &&
+    newStatus === 'aprobado'
+  ) {
     const confirmed = window.confirm(
-      `¿Confirmás que el cliente pagó el saldo pendiente de Q${Number(order.balanceDue || 0).toFixed(2)} y recibió el pedido?`
+      `¿Confirmás que recibiste Q${initialPayment.toFixed(2)} ` +
+      'como pago inicial y deseas aprobar el pedido?'
     )
 
     if (!confirmed) return
-
-    try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        balanceDue: 0,
-        status: 'entregado'
-      })
-
-      setOrders((prev) =>
-        prev.map((item) =>
-          item.id === order.id
-            ? { ...item, balanceDue: 0, status: 'entregado' }
-            : item
-        )
-      )
-    } catch (error) {
-      console.error('Error registrando pago de saldo:', error)
-    }
   }
 
-  const handleChangeStatus = async (orderId, newStatus) => {
-    try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        status: newStatus
-      })
+  if (newStatus === 'entregado') {
+    const pending = roundMoney(
+      Math.max(0, total - initialPayment)
+    )
 
-      setOrders((prev) =>
-        prev.map((order) =>
-          order.id === orderId
-            ? { ...order, status: newStatus }
-            : order
-        )
-      )
-    } catch (error) {
-      console.error('Error actualizando estado:', error)
-    }
+    const confirmed = window.confirm(
+      `¿Confirmás que el pedido fue entregado y está totalmente pagado? ` +
+      `El saldo a liquidar es Q${pending.toFixed(2)}.`
+    )
+
+    if (!confirmed) return
   }
+
+  if (previousStatus === 'entregado') {
+    const confirmed = window.confirm(
+      'Vas a corregir una entrega registrada. ' +
+      'Se revertirá el registro del pago final y se recuperará ' +
+      'el saldo correspondiente al estado seleccionado. ¿Continuar?'
+    )
+
+    if (!confirmed) return
+  } else if (newStatus === 'pendiente_aprobacion') {
+    const confirmed = window.confirm(
+      'Al regresar a pendiente se quitará la confirmación del pago inicial. ' +
+      'El importe previsto se conservará para volver a aprobar. ¿Continuar?'
+    )
+
+    if (!confirmed) return
+  }
+
+  const paid =
+    newStatus === 'pendiente_aprobacion'
+      ? 0
+      : initialPayment
+
+  const finalPayment =
+    newStatus === 'entregado'
+      ? roundMoney(total - initialPayment)
+      : 0
+
+  const changes = {
+    status: newStatus,
+    initialPaymentAmount: initialPayment,
+
+    // Pago inicial confirmado.
+    depositPaid: paid,
+
+    // Pago realizado al entregar.
+    finalPaymentPaid: finalPayment,
+
+    // Total efectivamente registrado como pagado.
+    totalPaid: roundMoney(paid + finalPayment),
+
+    balanceDue: roundMoney(
+      Math.max(0, total - paid - finalPayment)
+    ),
+
+    updatedAt: new Date().toISOString()
+  }
+
+  changes.paymentStatus = getPaymentSummary({ ...order, ...changes }).status
+
+  if (newStatus === 'entregado') {
+    // Conservar la primera entrega y cada confirmación posterior.
+    if (!order.deliveredAt) changes.deliveredAt = serverTimestamp()
+    changes.deliveryHistory = arrayUnion({
+      action: 'entrega_confirmada',
+      recordedAt: new Date().toISOString()
+    })
+  } else if (previousStatus === 'entregado') {
+    // Regresar de estado NO borra la fecha real de entrega.
+    changes.deliveryHistory = arrayUnion({
+      action: 'estado_reabierto',
+      status: newStatus,
+      recordedAt: new Date().toISOString()
+    })
+  }
+
+
+  try {
+    // Guardar estado e importes juntos.
+    await updateDoc(doc(db, 'orders', orderId), changes)
+
+    // Leer los valores resueltos por Firestore (timestamps y arrays).
+    const savedOrder = await getDoc(doc(db, 'orders', orderId))
+    if (savedOrder.exists()) {
+      setOrders((prev) => prev.map((item) => item.id === orderId
+        ? { ...savedOrder.data(), id: orderId }
+        : item))
+    }
+
+  } catch (error) {
+    console.error('Error actualizando pedido:', error)
+    alert('No se pudo actualizar el pedido. Intenta nuevamente.')
+  }
+}
+
+const handleRegisterBalancePayment = async (order) => {
+  await handleChangeStatus(order.id, 'entregado')
+}
 
   const handleCancelOrder = async (order) => {
-    const reason = window.prompt('Motivo de anulación del pedido:')
+    const reason = window.prompt(
+      'Motivo de anulación del pedido:'
+    )
 
     if (!reason) return
 
     const cancelledAt = new Date().toISOString()
+    const paymentStatus = getPaymentSummary({ ...order, status: 'anulado' }).status
 
     try {
       await updateDoc(doc(db, 'orders', order.id), {
         status: 'anulado',
         cancelReason: reason,
+        paymentStatus,
         cancelledAt
       })
 
@@ -99,6 +480,7 @@ function OrdersHistoryPage() {
                 ...item,
                 status: 'anulado',
                 cancelReason: reason,
+                paymentStatus,
                 cancelledAt
               }
             : item
@@ -109,30 +491,61 @@ function OrdersHistoryPage() {
     }
   }
 
+  const handleDeleteOrder = async (order) => {
+    const confirmed = window.confirm(
+      `Esto va a ELIMINAR PERMANENTEMENTE el pedido de "${
+        order.customerName || 'sin nombre'
+      }". No se puede deshacer. ¿Continuar?`
+    )
+
+    if (!confirmed) return
+
+    try {
+      await deleteDoc(doc(db, 'orders', order.id))
+
+      setOrders((prev) =>
+        prev.filter((item) => item.id !== order.id)
+      )
+    } catch (error) {
+      console.error('Error eliminando pedido:', error)
+      alert('No se pudo eliminar el pedido. Revisa la consola.')
+    }
+  }
+
   const generateWhatsAppLink = (order) => {
+    const payment = getPaymentSummary(order)
     const message = `
-      Hola ${order.customerName || ''},
+Hola ${order.customerName || ''},
 
-      Tu pedido está en estado: ${order.status || 'pendiente_aprobacion'}
+Tu pedido está en estado: ${
+      order.status || 'pendiente_aprobacion'
+    }
 
-      Detalle:
-      Prenda: ${order.product || 'No definida'}
-      Talla: ${order.size || 'No definida'}
-      Cantidad: ${order.quantity || 0}
-      Técnica: ${order.technique || 'No definida'}
+Detalle:
+Prenda: ${getProductName(order)}
+Talla: ${order.size || 'No definida'}
+Cantidad: ${order.quantity || 0}
+Técnica: ${order.technique || 'No definida'}
 
-      Vista previa:
-      ${order.previewImage || 'No disponible'}
-          `
+Situación de pago: ${payment.label}
+Total: Q${payment.total.toFixed(2)}
+Anticipo / pago inicial: Q${payment.initial.toFixed(2)}
+Pago final: Q${payment.final.toFixed(2)}
+Saldo: Q${payment.balance.toFixed(2)}
+
+Vista previa:
+${order.previewImage || 'No disponible'}
+    `.trim()
 
     const encodedMessage = encodeURIComponent(message)
+
     return `https://wa.me/502${order.phone}?text=${encodedMessage}`
   }
 
   const handleDownloadOrderPDF = (order) => {
     const docPDF = new jsPDF()
-
     let y = 20
+    const payment = getPaymentSummary(order)
 
     const addText = (text, options = {}) => {
       const {
@@ -148,15 +561,17 @@ function OrdersHistoryPage() {
         maxWidth
       )
 
-      docPDF.text(lines, 20, y)
-
-      y += lines.length * spacing
+      for (const line of lines) {
+        if (y + spacing > docPDF.internal.pageSize.getHeight() - 20) {
+          docPDF.addPage()
+          y = 20
+        }
+        docPDF.text(line, 20, y)
+        y += spacing
+      }
     }
 
-    // =========================
     // ENCABEZADO
-    // =========================
-
     addText('Pedido personalizado', {
       fontSize: 18,
       spacing: 9
@@ -164,10 +579,7 @@ function OrdersHistoryPage() {
 
     y += 8
 
-    // =========================
     // DATOS DEL PEDIDO
-    // =========================
-
     addText(
       `Cliente: ${order.customerName || 'No definido'}`
     )
@@ -176,14 +588,10 @@ function OrdersHistoryPage() {
       `Teléfono: ${order.phone || 'No definido'}`
     )
 
-    addText(
-      `Prenda: ${
-        order.productName ||
-        order.product ||
-        order.productType ||
-        'No definida'
-      }`
-    )
+    addText(`Prenda: ${getProductName(order)}`)
+    addText(`Fecha del pedido: ${displayOrderDate(order.orderDate || order.createdAt)}`)
+    addText(`Entrega prevista: ${displayOrderDate(order.expectedDeliveryDate)}`)
+    addText(`Primera entrega real: ${displayOrderDate(order.deliveredAt)}`)
 
     addText(
       `Talla: ${order.size || 'No definida'}`
@@ -199,22 +607,53 @@ function OrdersHistoryPage() {
 
     y += 4
 
+    // COTIZACIÓN
     addText('Cotización:', {
       fontSize: 13,
       spacing: 7
     })
 
     addText(
-      `Precio base: Q${Number(order.unitBasePrice || 0).toFixed(2)}  ·  Recargo personalización (${order.personalizationSize || 'chico'}): Q${Number(order.personalizationSurcharge || 0).toFixed(2)}`
+      `Precio base: Q${Number(
+        order.unitBasePrice || 0
+      ).toFixed(2)}`
     )
 
-    addText(
-      `Precio unitario: Q${Number(order.quotedUnitPrice || 0).toFixed(2)}  ·  Cantidad: ${order.quantity || 0}  ·  Total: Q${Number(order.quoteTotal || 0).toFixed(2)}`
-    )
+    if (order.personalizationSizeBack) {
+      addText(
+        `Recargo frente (${
+          order.personalizationSize || 'chico'
+        }) + espalda (${
+          order.personalizationSizeBack
+        }): Q${Number(
+          order.personalizationSurcharge || 0
+        ).toFixed(2)}`
+      )
+    } else {
+      addText(
+        `Recargo personalización (${
+          order.personalizationSize || 'chico'
+        }): Q${Number(
+          order.personalizationSurcharge || 0
+        ).toFixed(2)}`
+      )
+    }
 
     addText(
-      `Forma de pago: ${order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%'}  ·  Pagado: Q${Number(order.depositPaid || 0).toFixed(2)}  ·  Saldo pendiente: Q${Number(order.balanceDue || 0).toFixed(2)}`
+      `Precio unitario: Q${Number(
+        order.quotedUnitPrice || 0
+      ).toFixed(2)}  ·  Cantidad: ${
+        order.quantity || 0
+      }  ·  Total: Q${Number(
+        order.quoteTotal || 0
+      ).toFixed(2)}`
     )
+
+    addText(`Forma de pago: ${order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%'}`)
+    addText(`Anticipo / pago inicial: Q${payment.initial.toFixed(2)}`)
+    addText(`Pago final: Q${payment.final.toFixed(2)}`)
+    addText(`Total pagado: Q${payment.paid.toFixed(2)} · Saldo pendiente: Q${payment.balance.toFixed(2)}`)
+    addText(`Situación de pago: ${payment.label}`)
 
     y += 4
 
@@ -224,17 +663,11 @@ function OrdersHistoryPage() {
 
     y += 6
 
-    // =========================
     // VALIDACIÓN IA
-    // =========================
-
-    addText(
-      'Validación del asistente inteligente:',
-      {
-        fontSize: 14,
-        spacing: 8
-      }
-    )
+    addText('Validación del asistente inteligente:', {
+      fontSize: 14,
+      spacing: 8
+    })
 
     const aiValidation = order.aiValidation
 
@@ -254,15 +687,13 @@ function OrdersHistoryPage() {
 
       addText(
         `Recomendación: ${
-          aiValidation.recommendation ||
-          'No disponible'
+          aiValidation.recommendation || 'No disponible'
         }`
       )
 
       addText(
         `Nota para producción: ${
-          aiValidation.productionNote ||
-          'No disponible'
+          aiValidation.productionNote || 'No disponible'
         }`
       )
 
@@ -291,11 +722,12 @@ function OrdersHistoryPage() {
 
     y += 6
 
-    // =========================
     // VISTA PREVIA
-    // =========================
-
     if (order.previewBase64) {
+      if (y + 115 > docPDF.internal.pageSize.getHeight() - 20) {
+        docPDF.addPage()
+        y = 20
+      }
       addText('Vista previa:')
 
       docPDF.addImage(
@@ -314,10 +746,7 @@ function OrdersHistoryPage() {
       )
     }
 
-    // =========================
     // ANULACIÓN
-    // =========================
-
     if (order.status === 'anulado') {
       y += 5
 
@@ -333,35 +762,47 @@ function OrdersHistoryPage() {
     )
   }
 
-  const filteredOrders = orders.filter((o) => {
-      const matchesSearch =
-        o.customerName?.toLowerCase().includes(search.toLowerCase()) ||
-        o.product?.toLowerCase().includes(search.toLowerCase())
+  // Buscar usando el mismo nombre que se muestra en la tarjeta.
+  const filteredOrders = orders.filter((order) => {
+    const searchText = search.trim().toLowerCase()
 
-      const matchesStatus =
-        statusFilter === '' || o.status === statusFilter
+    const matchesSearch =
+      String(order.customerName || '')
+        .toLowerCase()
+        .includes(searchText) ||
+      getProductName(order)
+        .toLowerCase()
+        .includes(searchText)
 
-      return matchesSearch && matchesStatus
-    })
+    const matchesStatus =
+      statusFilter === '' ||
+      order.status === statusFilter
+
+    return matchesSearch && matchesStatus
+  })
 
   return (
-    <div className="container mt-4">
+    <div className="container mt-4 orders-history-compact">
+      <style>{historyCompactStyles}</style>
       <h2>Historial de pedidos</h2>
 
       {orders.length === 0 && (
-        <p className="text-muted">No hay pedidos registrados.</p>
+        <p className="text-muted">
+          No hay pedidos registrados.
+        </p>
       )}
 
       <div className="card p-3 mb-3">
         <div className="row">
-
           <div className="col-md-6">
             <input
               type="text"
               className="form-control"
               placeholder="Buscar por cliente o prenda..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) =>
+                setSearch(event.target.value)
+              }
             />
           </div>
 
@@ -369,142 +810,200 @@ function OrdersHistoryPage() {
             <select
               className="form-control"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(event) =>
+                setStatusFilter(event.target.value)
+              }
             >
               <option value="">Todos los estados</option>
-              <option value="pendiente_aprobacion">Pendiente</option>
+              <option value="pendiente_aprobacion">
+                Pendiente
+              </option>
               <option value="aprobado">Aprobado</option>
-              <option value="en_produccion">Producción</option>
+              <option value="en_produccion">
+                Producción
+              </option>
               <option value="terminado">Terminado</option>
               <option value="entregado">Entregado</option>
               <option value="anulado">Anulado</option>
             </select>
           </div>
-
         </div>
       </div>
 
-      {filteredOrders.map((o) => {
-        const isCancelled = o.status === 'anulado'
+      {filteredOrders.map((order) => {
+        const isCancelled = order.status === 'anulado'
+        const payment = getPaymentSummary(order)
 
         return (
           <div
-            key={o.id}
+            key={order.id}
             className={`card mb-3 shadow-sm border-0 ${
               isCancelled ? 'bg-light border-danger' : ''
             }`}
-                      >
+          >
             <div className="row g-0">
               <div className="col-md-3 p-2">
                 <img
-                  src={o.previewImage}
-                  className="img-fluid rounded"
+                  src={order.previewImage}
+                  className="img-fluid rounded history-order-image"
                   alt="Vista previa del pedido"
                 />
               </div>
 
               <div className="col-md-9">
                 <div className="card-body">
-                  <h5 className="card-title">
-                    {o.product || 'Sin prenda seleccionada'}
-                  </h5>
+                  <div className="history-card-heading">
+                    <h5 className="card-title">{getProductName(order)}</h5>
+                    <AIValidationPopover order={order} />
+                  </div>
 
                   <p className="mb-1">
-                    <strong>Cliente:</strong> {o.customerName || 'No definido'}
+                    <strong>Cliente:</strong>{' '}
+                    {order.customerName || 'No definido'}
                   </p>
 
                   <p className="mb-1">
-                    <strong>Teléfono:</strong> {o.phone || 'No definido'}
+                    <strong>Teléfono:</strong>{' '}
+                    {order.phone || 'No definido'}
                   </p>
 
                   <p className="mb-1">
-                    <strong>Talla:</strong> {o.size || 'No definida'}
+                    <strong>Talla:</strong>{' '}
+                    {order.size || 'No definida'}
                   </p>
 
                   <p className="mb-1">
-                    <strong>Cantidad:</strong> {o.quantity || 0}
+                    <strong>Cantidad:</strong>{' '}
+                    {order.quantity || 0}
                   </p>
 
-                  <p className="mb-1">
-                    <strong>Técnica:</strong> {o.technique || 'No definida'}
-                  </p>
-
-                  {o.quoteTotal > 0 && (
-                    <div className="bg-light border rounded p-2 mb-2">
-                      <p className="mb-1">
-                        <strong>Total cotizado:</strong> Q{Number(o.quoteTotal || 0).toFixed(2)}
-                        {' · '}
-                        <strong>Pagado:</strong> Q{Number(o.depositPaid || 0).toFixed(2)}
-                        {' · '}
-                        <strong>Saldo:</strong>{' '}
-                        <span className={o.balanceDue > 0 ? 'text-danger fw-bold' : 'text-success fw-bold'}>
-                          Q{Number(o.balanceDue || 0).toFixed(2)}
-                        </span>
-                      </p>
-                    </div>
+                  <div className="d-flex flex-wrap gap-3 small text-muted mb-2">
+                    <span><strong>Fecha del pedido:</strong> {displayOrderDate(order.orderDate || order.createdAt)}</span>
+                    <span><strong>Entrega prevista:</strong> {displayOrderDate(order.expectedDeliveryDate)}</span>
+                    <span><strong>Primera entrega real:</strong> {displayOrderDate(order.deliveredAt)}</span>
+                  </div>
+                  {Array.isArray(order.deliveryHistory) && order.deliveryHistory.length > 0 && (
+                    <details className="small mb-2">
+                      <summary>Historial de entregas ({order.deliveryHistory.length})</summary>
+                      <ul className="mt-2">
+                        {order.deliveryHistory.map((entry, index) => (
+                          <li key={index}>
+                            {displayOrderDate(entry.recordedAt)} — {entry.action === 'entrega_confirmada'
+                              ? 'Entrega confirmada'
+                              : `Pedido reabierto: ${entry.status || 'sin estado'}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
                   )}
 
-                  <OrderAIValidationDetails
-                    validation={o.aiValidation}
-                    validatedAt={o.aiValidatedAt}
-                  />
+                  <p className="mb-1">
+                    <strong>Técnica:</strong>{' '}
+                    {order.technique || 'No definida'}
+                  </p>
+
+                  <div className="bg-light border rounded p-2 mb-2">
+                    <div className="d-flex flex-wrap gap-2 justify-content-between mb-2">
+                      <strong>Total cotizado: Q{payment.total.toFixed(2)}</strong>
+                      <span className={`badge ${payment.badge}`}>
+                        {payment.label}
+                      </span>
+                    </div>
+                    <div className="d-flex flex-wrap gap-3 small">
+                      <span><strong>Anticipo / pago inicial:</strong> Q{payment.initial.toFixed(2)}</span>
+                      <span><strong>Pago final:</strong> Q{payment.final.toFixed(2)}</span>
+                      <span><strong>Total pagado:</strong> Q{payment.paid.toFixed(2)}</span>
+                      <span className={payment.balance > 0 ? 'text-danger' : 'text-success'}>
+                        <strong>Saldo pendiente: Q{payment.balance.toFixed(2)}</strong>
+                      </span>
+                    </div>
+                  </div>
+
 
                   <p className="mb-1">
                     <strong>Estado:</strong>{' '}
-                    <span className={`badge ${
-                      o.status === 'anulado' ? 'bg-danger' :
-                      o.status === 'entregado' ? 'bg-success' :
-                      o.status === 'en_produccion' ? 'bg-primary' :
-                      'bg-warning text-dark'
-                    }`}>
-                      {o.status || 'pendiente_aprobacion'}
+                    <span
+                      className={`badge ${
+                        order.status === 'anulado'
+                          ? 'bg-danger'
+                          : order.status === 'entregado'
+                            ? 'bg-success'
+                            : order.status === 'en_produccion'
+                              ? 'bg-primary'
+                              : 'bg-warning text-dark'
+                      }`}
+                    >
+                      {order.status || 'pendiente_aprobacion'}
                     </span>
                   </p>
 
                   {isCancelled && (
                     <p className="mb-1 text-danger">
                       <strong>Motivo de anulación:</strong>{' '}
-                      {o.cancelReason || 'No definido'}
+                      {order.cancelReason || 'No definido'}
                     </p>
                   )}
 
                   <div className="mt-3">
-                    <label className="form-label">Cambiar estado</label>
+                    <label className="form-label">
+                      Cambiar estado
+                    </label>
+
                     <select
                       className="form-select"
-                      value={o.status || 'pendiente_aprobacion'}
+                      value={
+                        order.status || 'pendiente_aprobacion'
+                      }
                       disabled={isCancelled}
-                      onChange={(e) =>
-                        handleChangeStatus(o.id, e.target.value)
+                      onChange={(event) =>
+                        handleChangeStatus(
+                          order.id,
+                          event.target.value
+                        )
                       }
                     >
                       <option value="pendiente_aprobacion">
                         Pendiente de aprobación
                       </option>
-                      <option value="aprobado">Aprobado</option>
-                      <option value="en_produccion">En producción</option>
-                      <option value="terminado">Terminado</option>
-                      <option value="entregado">Entregado</option>
-                      <option value="anulado">Anulado</option>
+                      <option value="aprobado">
+                        Aprobado
+                      </option>
+                      <option value="en_produccion">
+                        En producción
+                      </option>
+                      <option value="terminado">
+                        Terminado
+                      </option>
+                      <option value="entregado">
+                        Entregado
+                      </option>
+                      <option value="anulado">
+                        Anulado
+                      </option>
                     </select>
                   </div>
 
                   <div className="mt-3 d-flex flex-wrap gap-2 align-items-center">
                     <button
                       className="btn btn-outline-primary"
-                      onClick={() => handleDownloadOrderPDF(o)}
+                      onClick={() =>
+                        handleDownloadOrderPDF(order)
+                      }
                     >
                       Descargar pedido PDF
                     </button>
 
                     <a
-                      href={generateWhatsAppLink(o)}
+                      href={generateWhatsAppLink(order)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-success"
                       style={
                         isCancelled
-                          ? { pointerEvents: 'none', opacity: 0.5 }
+                          ? {
+                              pointerEvents: 'none',
+                              opacity: 0.5
+                            }
                           : {}
                       }
                     >
@@ -514,7 +1013,11 @@ function OrdersHistoryPage() {
                     <button
                       className="btn btn-warning"
                       onClick={() =>
-                        navigate('/crearpedido', { state: { orderToEdit: o } })
+                        navigate('/crearpedido', {
+                          state: {
+                            orderToEdit: order
+                          }
+                        })
                       }
                       disabled={isCancelled}
                     >
@@ -523,18 +1026,34 @@ function OrdersHistoryPage() {
 
                     <button
                       className="btn btn-danger"
-                      onClick={() => handleCancelOrder(o)}
+                      onClick={() =>
+                        handleCancelOrder(order)
+                      }
                       disabled={isCancelled}
                     >
                       Anular
                     </button>
 
-                    {o.balanceDue > 0 && !isCancelled && (
+                    {payment.balance > 0 &&
+                      ['aprobado', 'en_produccion', 'terminado'].includes(order.status) && (
                       <button
                         className="btn btn-dark"
-                        onClick={() => handleRegisterBalancePayment(o)}
+                        onClick={() =>
+                          handleRegisterBalancePayment(order)
+                        }
                       >
-                        Registrar pago de saldo
+                        Registrar saldo y entregar
+                      </button>
+                    )}
+
+                    {isAdmin && (
+                      <button
+                        className="btn btn-outline-danger"
+                        onClick={() =>
+                          handleDeleteOrder(order)
+                        }
+                      >
+                        Eliminar pedido
                       </button>
                     )}
                   </div>

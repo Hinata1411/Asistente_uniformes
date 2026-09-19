@@ -26,6 +26,25 @@ import CustomerGarmentPreview from '../components/orders/CustomerGarmentPreview'
 
 import './CreateOrderPage.css'
 
+const localDateValue = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parsed = new Date(`${value}T12:00:00`)
+    if (!Number.isFinite(parsed.getTime())) return ''
+    const normalized = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+    return normalized === value ? value : ''
+  }
+  try {
+    const date = typeof value.toDate === 'function'
+      ? value.toDate()
+      : value.seconds != null
+        ? new Date(value.seconds * 1000)
+        : new Date(value)
+    if (!Number.isFinite(date.getTime())) return ''
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  } catch { return '' }
+}
+
 function CreateOrderPage() {
   const location = useLocation()
 
@@ -45,6 +64,8 @@ function CreateOrderPage() {
   const initialForm = {
     garmentSource: 'inventory',
 
+    orderDate: localDateValue(new Date()),
+    expectedDeliveryDate: '',
     customerName: '',
     phone: '',
 
@@ -61,6 +82,7 @@ function CreateOrderPage() {
     customizationSide: '',
 
     personalizationSize: 'chico',
+    personalizationSizeBack: 'chico',
     paymentPlan: 'anticipo_50'
   }
 
@@ -104,11 +126,24 @@ function CreateOrderPage() {
   const techniquePricing =
     personalizationPricing[form.technique]
 
-  const personalizationSurcharge = techniquePricing
+  const isBothSides =
+    form.customizationSide === 'ambos'
+
+  const personalizationSurchargeFront = techniquePricing
     ? Number(
         techniquePricing[form.personalizationSize] || 0
       )
     : 0
+
+  const personalizationSurchargeBack =
+    isBothSides && techniquePricing
+      ? Number(
+          techniquePricing[form.personalizationSizeBack] || 0
+        )
+      : 0
+
+  const personalizationSurcharge =
+    personalizationSurchargeFront + personalizationSurchargeBack
 
   const missingPricingRule =
     Boolean(form.technique) && !techniquePricing
@@ -130,6 +165,8 @@ function CreateOrderPage() {
       const order = location.state.orderToEdit
 
       setForm({
+        orderDate: localDateValue(order.orderDate) || localDateValue(order.createdAt),
+        expectedDeliveryDate: localDateValue(order.expectedDeliveryDate),
         garmentSource:
           order.garmentSource || 'inventory',
 
@@ -172,6 +209,9 @@ function CreateOrderPage() {
         personalizationSize:
           order.personalizationSize || 'chico',
 
+        personalizationSizeBack:
+          order.personalizationSizeBack || 'chico',
+
         paymentPlan:
           order.paymentPlan || 'anticipo_50'
       })
@@ -189,7 +229,7 @@ function CreateOrderPage() {
   }, [location.state])
 
   const resetForm = () => {
-    setForm(initialForm)
+    setForm({ ...initialForm, orderDate: localDateValue(new Date()) })
     setAiResult(null)
     setPreviewBase64('')
     setEditorElements([])
@@ -199,6 +239,15 @@ function CreateOrderPage() {
 
   const handleSaveOrder = async (order) => {
   try {
+    if (!localDateValue(form.orderDate) || !localDateValue(form.expectedDeliveryDate)) {
+      alert('Indica una fecha válida de toma del pedido y de entrega prevista.')
+      return
+    }
+    if (form.expectedDeliveryDate < form.orderDate) {
+      alert('La entrega prevista no puede ser anterior a la toma del pedido.')
+      return
+    }
+
     const isCustomerGarment =
       form.garmentSource === 'customer'
 
@@ -605,6 +654,8 @@ function CreateOrderPage() {
           transaction.update(
             orderRef,
             {
+              orderDate: form.orderDate,
+              expectedDeliveryDate: form.expectedDeliveryDate,
               customerName:
                 form.customerName,
 
@@ -638,6 +689,9 @@ function CreateOrderPage() {
 
               personalizationSize:
                 form.personalizationSize,
+
+              personalizationSizeBack:
+                isBothSides ? form.personalizationSizeBack : null,
 
               personalizationSurcharge,
 
@@ -699,6 +753,8 @@ function CreateOrderPage() {
     // =========================================
 
     const newOrder = {
+      orderDate: form.orderDate,
+      expectedDeliveryDate: form.expectedDeliveryDate,
       customerName:
         form.customerName,
 
@@ -742,6 +798,9 @@ function CreateOrderPage() {
       personalizationSize:
         form.personalizationSize,
 
+      personalizationSizeBack:
+        isBothSides ? form.personalizationSizeBack : null,
+
       personalizationSurcharge,
 
       quotedUnitPrice:
@@ -752,18 +811,13 @@ function CreateOrderPage() {
       paymentPlan:
         form.paymentPlan,
 
-      depositPaid,
+      // Importe previsto; se confirma al aprobar.
+      initialPaymentAmount: depositPaid,
 
-      balanceDue,
-
-      /*
-        El anticipo (o pago completo) ya se registra
-        en este mismo formulario, así que el pedido
-        entra directo como "aprobado" en vez de quedar
-        "pendiente_aprobacion".
-      */
-      status:
-        'aprobado',
+      // El pedido todavía está pendiente de aprobación.
+      depositPaid: 0,
+      balanceDue: quoteTotal,
+      status: 'pendiente_aprobacion',
 
       createdAt:
         new Date().toISOString()
@@ -1138,6 +1192,27 @@ function CreateOrderPage() {
             />
           </div>
 
+          <div className="col-12 col-md-6">
+            <label className="form-label" htmlFor="orderDate">Fecha de toma del pedido</label>
+            <input id="orderDate" type="date" className="form-control"
+              value={form.orderDate} required
+              readOnly={Boolean(editingOrder && (localDateValue(editingOrder.orderDate) || localDateValue(editingOrder.createdAt)))}
+              onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
+            />
+            {editingOrder && !localDateValue(editingOrder.orderDate) && !localDateValue(editingOrder.createdAt) && (
+              <small className="text-muted">Este pedido antiguo no tiene fecha de toma. Indica la fecha correcta.</small>
+            )}
+          </div>
+          <div className="col-12 col-md-6">
+            <label className="form-label" htmlFor="expectedDeliveryDate">Fecha prevista de entrega</label>
+            <input id="expectedDeliveryDate" type="date" className="form-control"
+              value={form.expectedDeliveryDate} min={form.orderDate || undefined} required
+              onChange={(e) => setForm({ ...form, expectedDeliveryDate: e.target.value })}
+            />
+            {form.expectedDeliveryDate && form.orderDate && form.expectedDeliveryDate < form.orderDate && (
+              <small className="text-danger">La entrega no puede ser anterior a la toma del pedido.</small>
+            )}
+          </div>
         </div>
       </section>
 
@@ -1261,7 +1336,9 @@ function CreateOrderPage() {
         <div className="row g-3 mb-2">
           <div className="col-12 col-md-4">
             <label className="form-label">
-              Tamaño de la personalización
+              {isBothSides
+                ? 'Tamaño del diseño (frente)'
+                : 'Tamaño de la personalización'}
             </label>
 
             <select
@@ -1279,7 +1356,36 @@ function CreateOrderPage() {
               <option value="grande">Grande (30x23")</option>
             </select>
           </div>
+
+          {isBothSides && (
+            <div className="col-12 col-md-4">
+              <label className="form-label">
+                Tamaño del diseño (espalda)
+              </label>
+
+              <select
+                className="form-select"
+                value={form.personalizationSizeBack}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    personalizationSizeBack: e.target.value
+                  })
+                }
+              >
+                <option value="chico">Chico (8x10")</option>
+                <option value="mediano">Mediano (16x20")</option>
+                <option value="grande">Grande (30x23")</option>
+              </select>
+            </div>
+          )}
         </div>
+
+        {isBothSides && (
+          <p className="quote-hint">
+            El área es "Frente y espalda": se cobra un recargo de personalización por cada lado (pueden ser tamaños distintos).
+          </p>
+        )}
 
         {missingPricingRule && (
           <div className="alert alert-warning">
@@ -1294,10 +1400,26 @@ function CreateOrderPage() {
               <strong>Q{unitBasePrice.toFixed(2)}</strong>
             </div>
 
-            <div className="quote-row">
-              <span>Recargo por personalización ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
-              <strong>Q{personalizationSurcharge.toFixed(2)}</strong>
-            </div>
+            {!isBothSides && (
+              <div className="quote-row">
+                <span>Recargo por personalización ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
+                <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
+              </div>
+            )}
+
+            {isBothSides && (
+              <>
+                <div className="quote-row">
+                  <span>Recargo frente ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
+                  <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
+                </div>
+
+                <div className="quote-row">
+                  <span>Recargo espalda ({form.technique || 'sin técnica'}, {form.personalizationSizeBack})</span>
+                  <strong>Q{personalizationSurchargeBack.toFixed(2)}</strong>
+                </div>
+              </>
+            )}
 
             <div className="quote-row">
               <span>Precio unitario</span>

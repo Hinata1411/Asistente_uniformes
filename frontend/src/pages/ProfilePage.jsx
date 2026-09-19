@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -9,6 +10,76 @@ import { auth } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 
 import './ProfilePage.css'
+
+function EyeIcon() {
+  return (
+    <svg
+      width="21"
+      height="21"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+
+      <circle
+        cx="12"
+        cy="12"
+        r="3"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      width="21"
+      height="21"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M3 3l18 18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+
+      <path
+        d="M10.6 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a15.8 15.8 0 0 1-2.1 3.1"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+
+      <path
+        d="M6.2 6.2C3.5 8.1 2 12 2 12s3.5 7 10 7a10.7 10.7 0 0 0 5.8-1.8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+
+      <path
+        d="M10.7 10.7a2 2 0 0 0-.7 1.5A2.2 2.2 0 0 0 12.2 14a2 2 0 0 0 1.5-.7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
 
 const validatePassword = (password) => {
   if (password.length < 8) {
@@ -54,6 +125,9 @@ const getFirebaseErrorMessage = (error) => {
     case 'auth/user-not-found':
       return 'No se encontró la cuenta del usuario.'
 
+    case 'auth/operation-not-allowed':
+      return 'El cambio de contraseña no está habilitado para esta cuenta.'
+
     default:
       return 'No se pudo actualizar la contraseña. Inténtalo nuevamente.'
   }
@@ -71,29 +145,49 @@ function ProfilePage() {
   const [confirmPassword, setConfirmPassword] =
     useState('')
 
-  const [showCurrentPassword, setShowCurrentPassword] =
-    useState(false)
+  const [
+    showCurrentPassword,
+    setShowCurrentPassword
+  ] = useState(false)
 
-  const [showNewPassword, setShowNewPassword] =
-    useState(false)
+  const [
+    showNewPassword,
+    setShowNewPassword
+  ] = useState(false)
 
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false)
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword
+  ] = useState(false)
 
   const [loading, setLoading] =
     useState(false)
 
-  const [message, setMessage] =
+  const [successMessage, setSuccessMessage] =
     useState('')
 
   const [errorMessage, setErrorMessage] =
     useState('')
 
+  const clearMessages = () => {
+    setSuccessMessage('')
+    setErrorMessage('')
+  }
+
+  const clearForm = () => {
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+
+    setShowCurrentPassword(false)
+    setShowNewPassword(false)
+    setShowConfirmPassword(false)
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
 
-    setMessage('')
-    setErrorMessage('')
+    clearMessages()
 
     if (!user || !auth.currentUser) {
       setErrorMessage(
@@ -146,10 +240,10 @@ function ProfilePage() {
       setLoading(true)
 
       /*
-        Firebase crea una credencial temporal utilizando
-        el correo del usuario y su contraseña actual.
+        La credencial se crea temporalmente para
+        comprobar la contraseña actual.
 
-        La contraseña no se guarda en Firestore.
+        No se guarda en Firestore ni en localStorage.
       */
       const credential =
         EmailAuthProvider.credential(
@@ -158,9 +252,8 @@ function ProfilePage() {
         )
 
       /*
-        Se verifica nuevamente la identidad del usuario
-        porque cambiar la contraseña es una operación
-        sensible.
+        Firebase solicita autenticación reciente
+        para esta operación sensible.
       */
       await reauthenticateWithCredential(
         auth.currentUser,
@@ -168,19 +261,17 @@ function ProfilePage() {
       )
 
       /*
-        Firebase Authentication actualiza y protege
-        la contraseña.
+        Firebase Authentication actualiza
+        la contraseña de forma segura.
       */
       await updatePassword(
         auth.currentUser,
         newPassword
       )
 
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
+      clearForm()
 
-      setMessage(
+      setSuccessMessage(
         'Contraseña actualizada correctamente.'
       )
     } catch (error) {
@@ -216,7 +307,7 @@ function ProfilePage() {
         <div className="profile-avatar">
           {user?.email
             ?.charAt(0)
-            .toUpperCase()}
+            .toUpperCase() || '?'}
         </div>
       </div>
 
@@ -227,6 +318,7 @@ function ProfilePage() {
           <div className="profile-information">
             <div>
               <span>Correo electrónico</span>
+
               <strong>
                 {user?.email || 'No disponible'}
               </strong>
@@ -234,17 +326,25 @@ function ProfilePage() {
 
             <div>
               <span>Rol en el sistema</span>
+
               <strong>
                 {role === 'admin'
                   ? 'Administrador'
-                  : 'Empleado'}
+                  : role === 'empleado'
+                    ? 'Empleado'
+                    : 'Sin rol asignado'}
               </strong>
             </div>
           </div>
 
           <div className="profile-security-note">
-            🔒 El cambio de contraseña no modifica tu
-            correo, rol ni información del perfil.
+            <span aria-hidden="true">🔒</span>
+
+            <span>
+              El cambio de contraseña no modifica tu
+              correo electrónico, rol ni información
+              del perfil.
+            </span>
           </div>
         </section>
 
@@ -256,12 +356,12 @@ function ProfilePage() {
             contraseña actual.
           </p>
 
-          {message && (
+          {successMessage && (
             <div
               className="profile-alert success"
               role="status"
             >
-              {message}
+              {successMessage}
             </div>
           )}
 
@@ -289,31 +389,41 @@ function ProfilePage() {
                       : 'password'
                   }
                   value={currentPassword}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setCurrentPassword(
                       event.target.value
                     )
-                  }
+
+                    clearMessages()
+                  }}
                   autoComplete="current-password"
                   disabled={loading}
+                  required
                 />
 
                 <button
                   type="button"
+                  className="password-toggle"
                   onClick={() =>
                     setShowCurrentPassword(
                       (previous) => !previous
                     )
                   }
+                  disabled={loading}
                   aria-label={
                     showCurrentPassword
                       ? 'Ocultar contraseña actual'
                       : 'Mostrar contraseña actual'
                   }
+                  title={
+                    showCurrentPassword
+                      ? 'Ocultar contraseña'
+                      : 'Mostrar contraseña'
+                  }
                 >
                   {showCurrentPassword
-                    ? 'Ocultar'
-                    : 'Mostrar'}
+                    ? <EyeOffIcon />
+                    : <EyeIcon />}
                 </button>
               </div>
             </div>
@@ -332,31 +442,42 @@ function ProfilePage() {
                       : 'password'
                   }
                   value={newPassword}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setNewPassword(
                       event.target.value
                     )
-                  }
+
+                    clearMessages()
+                  }}
                   autoComplete="new-password"
                   disabled={loading}
+                  minLength={8}
+                  required
                 />
 
                 <button
                   type="button"
+                  className="password-toggle"
                   onClick={() =>
                     setShowNewPassword(
                       (previous) => !previous
                     )
                   }
+                  disabled={loading}
                   aria-label={
                     showNewPassword
                       ? 'Ocultar nueva contraseña'
                       : 'Mostrar nueva contraseña'
                   }
+                  title={
+                    showNewPassword
+                      ? 'Ocultar contraseña'
+                      : 'Mostrar contraseña'
+                  }
                 >
                   {showNewPassword
-                    ? 'Ocultar'
-                    : 'Mostrar'}
+                    ? <EyeOffIcon />
+                    : <EyeIcon />}
                 </button>
               </div>
             </div>
@@ -375,31 +496,42 @@ function ProfilePage() {
                       : 'password'
                   }
                   value={confirmPassword}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setConfirmPassword(
                       event.target.value
                     )
-                  }
+
+                    clearMessages()
+                  }}
                   autoComplete="new-password"
                   disabled={loading}
+                  minLength={8}
+                  required
                 />
 
                 <button
                   type="button"
+                  className="password-toggle"
                   onClick={() =>
                     setShowConfirmPassword(
                       (previous) => !previous
                     )
                   }
+                  disabled={loading}
                   aria-label={
                     showConfirmPassword
                       ? 'Ocultar confirmación'
                       : 'Mostrar confirmación'
                   }
+                  title={
+                    showConfirmPassword
+                      ? 'Ocultar contraseña'
+                      : 'Mostrar contraseña'
+                  }
                 >
                   {showConfirmPassword
-                    ? 'Ocultar'
-                    : 'Mostrar'}
+                    ? <EyeOffIcon />
+                    : <EyeIcon />}
                 </button>
               </div>
             </div>

@@ -28,7 +28,7 @@ import {
 
 import { notify } from '../services/toastStore'
 
-import './CreateProductPage.css'
+import '../styles/CreateProductPage.css'
 
 function CreateProductPage() {
   const navigate = useNavigate()

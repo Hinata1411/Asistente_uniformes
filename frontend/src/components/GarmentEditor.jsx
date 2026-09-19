@@ -15,7 +15,7 @@ import {
 } from 'react'
 
 import { notify } from '../services/toastStore'
-import './GarmentEditor.css'
+import '../styles/GarmentEditor.css'
 
 /* =========================================================
    CARGAR IMÁGENES

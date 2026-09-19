@@ -9,7 +9,7 @@ import { auth } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 import { notify } from '../services/toastStore'
 import logo from '../assets/brand/arte-grafia-logo.png'
-import './LoginPage.css'
+import '../styles/LoginPage.css'
 
 function EyeIcon({ passwordVisible }) {
   return (

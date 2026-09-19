@@ -26,7 +26,7 @@ import GarmentSourceSelector from '../components/orders/GarmentSourceSelector'
 import CustomerGarmentPreview from '../components/orders/CustomerGarmentPreview'
 import { notify } from '../services/toastStore'
 
-import './CreateOrderPage.css'
+import '../styles/CreateOrderPage.css'
 
 const localDateValue = (value) => {
   if (!value) return ''

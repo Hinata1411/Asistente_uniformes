@@ -14,6 +14,8 @@ import {
 } from 'firebase/firestore'
 
 import { db } from '../firebase/config'
+import { notify } from '../services/toastStore'
+import { askConfirm } from '../services/dialogStore'
 import './ProductsPage.css'
 
 function ProductsPage() {
@@ -58,7 +60,7 @@ function ProductsPage() {
       Number(currentStock || 0) + change
 
     if (newStock < 0) {
-      alert('El stock no puede ser negativo')
+      notify('El stock no puede ser negativo', 'warning')
       return
     }
 
@@ -86,8 +88,9 @@ function ProductsPage() {
         error
       )
 
-      alert(
-        'No se pudo actualizar el stock'
+      notify(
+        'No se pudo actualizar el stock',
+        'error'
       )
     }
   }
@@ -119,15 +122,17 @@ function ProductsPage() {
         error
       )
 
-      alert(
-        'No se pudo actualizar el estado del producto'
+      notify(
+        'No se pudo actualizar el estado del producto',
+        'error'
       )
     }
   }
 
   const handleDeleteProduct = async (product) => {
-    const confirmed = window.confirm(
-      `¿Deseas eliminar definitivamente "${product.name}"?`
+    const confirmed = await askConfirm(
+      `¿Deseas eliminar definitivamente "${product.name}"?`,
+      { confirmLabel: 'Eliminar definitivamente', danger: true }
     )
 
     if (!confirmed) {
@@ -145,8 +150,9 @@ function ProductsPage() {
       )
 
       if (!ordersSnapshot.empty) {
-        alert(
-          'Este producto ya está asociado a uno o más pedidos. No puede eliminarse definitivamente; puedes desactivarlo.'
+        notify(
+          'Este producto ya está asociado a uno o más pedidos. No puede eliminarse definitivamente; puedes desactivarlo.',
+          'warning'
         )
 
         return
@@ -163,8 +169,9 @@ function ProductsPage() {
         )
       )
 
-      alert(
-        'Producto eliminado definitivamente'
+      notify(
+        'Producto eliminado definitivamente',
+        'success'
       )
     } catch (error) {
       console.error(
@@ -172,8 +179,9 @@ function ProductsPage() {
         error
       )
 
-      alert(
-        'No se pudo eliminar el producto'
+      notify(
+        'No se pudo eliminar el producto',
+        'error'
       )
     }
   }

@@ -14,6 +14,7 @@ import {
   useImperativeHandle
 } from 'react'
 
+import { notify } from '../services/toastStore'
 import './GarmentEditor.css'
 
 /* =========================================================
@@ -608,8 +609,9 @@ const GarmentEditor = forwardRef(function GarmentEditor({
         'image/'
       )
     ) {
-      alert(
-        'Selecciona un archivo de imagen válido.'
+      notify(
+        'Selecciona un archivo de imagen válido.',
+        'warning'
       )
 
       e.target.value = ''
@@ -948,8 +950,9 @@ const GarmentEditor = forwardRef(function GarmentEditor({
   const handleSave =
     async () => {
       if (!hasGarment) {
-        alert(
-          'Selecciona un producto o carga una fotografía de la prenda'
+        notify(
+          'Selecciona un producto o carga una fotografía de la prenda',
+          'warning'
         )
 
         return
@@ -958,8 +961,9 @@ const GarmentEditor = forwardRef(function GarmentEditor({
       if (
         !customizationSide
       ) {
-        alert(
-          'Selecciona si será frente, espalda o ambos'
+        notify(
+          'Selecciona si será frente, espalda o ambos',
+          'warning'
         )
 
         return
@@ -974,8 +978,9 @@ const GarmentEditor = forwardRef(function GarmentEditor({
         showFront &&
         !frontImage
       ) {
-        alert(
-          'La imagen frontal todavía no ha terminado de cargar.'
+        notify(
+          'La imagen frontal todavía no ha terminado de cargar.',
+          'warning'
         )
 
         return
@@ -985,8 +990,9 @@ const GarmentEditor = forwardRef(function GarmentEditor({
         showBack &&
         !backImage
       ) {
-        alert(
-          'La imagen trasera todavía no ha terminado de cargar.'
+        notify(
+          'La imagen trasera todavía no ha terminado de cargar.',
+          'warning'
         )
 
         return
@@ -998,8 +1004,9 @@ const GarmentEditor = forwardRef(function GarmentEditor({
         )
 
       if (!preview) {
-        alert(
-          'No se pudo generar la vista previa'
+        notify(
+          'No se pudo generar la vista previa',
+          'error'
         )
 
         return

@@ -22,6 +22,8 @@ import {
   getStatusBadge
 } from '../services/orderFormatting'
 import { generateOrderPdf } from '../services/orderPdfService'
+import { notify } from '../services/toastStore'
+import { askConfirm, askPrompt } from '../services/dialogStore'
 import '../styles/statusBadges.css'
 import './OrdersHistoryPage.css'
 
@@ -173,7 +175,7 @@ function OrdersHistoryPage() {
   const total = Number(order.quoteTotal)
 
   if (!Number.isFinite(total) || total < 0) {
-    alert('El pedido no tiene un total válido.')
+    notify('El pedido no tiene un total válido.', 'warning')
     return
   }
 
@@ -216,7 +218,7 @@ function OrdersHistoryPage() {
     previousStatus === 'pendiente_aprobacion' &&
     newStatus !== 'aprobado'
   ) {
-    alert('Primero debes aprobar el pedido y confirmar el pago inicial.')
+    notify('Primero debes aprobar el pedido y confirmar el pago inicial.', 'warning')
     return
   }
 
@@ -224,9 +226,10 @@ function OrdersHistoryPage() {
     previousStatus === 'pendiente_aprobacion' &&
     newStatus === 'aprobado'
   ) {
-    const confirmed = window.confirm(
+    const confirmed = await askConfirm(
       `¿Confirmás que recibiste Q${initialPayment.toFixed(2)} ` +
-      'como pago inicial y deseas aprobar el pedido?'
+      'como pago inicial y deseas aprobar el pedido?',
+      { confirmLabel: 'Sí, aprobar' }
     )
 
     if (!confirmed) return
@@ -237,16 +240,17 @@ function OrdersHistoryPage() {
       Math.max(0, total - initialPayment)
     )
 
-    const confirmed = window.confirm(
+    const confirmed = await askConfirm(
       `¿Confirmás que el pedido fue entregado y está totalmente pagado? ` +
-      `El saldo a liquidar es Q${pending.toFixed(2)}.`
+      `El saldo a liquidar es Q${pending.toFixed(2)}.`,
+      { confirmLabel: 'Sí, entregado' }
     )
 
     if (!confirmed) return
   }
 
   if (previousStatus === 'entregado') {
-    const confirmed = window.confirm(
+    const confirmed = await askConfirm(
       'Vas a corregir una entrega registrada. ' +
       'Se revertirá el registro del pago final y se recuperará ' +
       'el saldo correspondiente al estado seleccionado. ¿Continuar?'
@@ -254,7 +258,7 @@ function OrdersHistoryPage() {
 
     if (!confirmed) return
   } else if (newStatus === 'pendiente_aprobacion') {
-    const confirmed = window.confirm(
+    const confirmed = await askConfirm(
       'Al regresar a pendiente se quitará la confirmación del pago inicial. ' +
       'El importe previsto se conservará para volver a aprobar. ¿Continuar?'
     )
@@ -325,7 +329,7 @@ function OrdersHistoryPage() {
 
   } catch (error) {
     console.error('Error actualizando pedido:', error)
-    alert('No se pudo actualizar el pedido. Intenta nuevamente.')
+    notify('No se pudo actualizar el pedido. Intenta nuevamente.', 'error')
   }
 }
 
@@ -337,7 +341,7 @@ const handleRegisterBalancePayment = async (order) => {
     if (!newPlan || newPlan === order.paymentPlan) return
 
     if (['entregado', 'anulado'].includes(order.status)) {
-      alert('No se puede cambiar la forma de pago de un pedido entregado o anulado.')
+      notify('No se puede cambiar la forma de pago de un pedido entregado o anulado.', 'warning')
       return
     }
 
@@ -354,7 +358,7 @@ const handleRegisterBalancePayment = async (order) => {
     const alreadyApproved =
       order.status && order.status !== 'pendiente_aprobacion'
 
-    const confirmed = window.confirm(
+    const confirmed = await askConfirm(
       newPlan === 'completo'
         ? `El cliente pagará el total (Q${total.toFixed(2)}) en lugar del anticipo del 50%. ¿Continuar?`
         : `El cliente pagará un anticipo del 50% (Q${newInitialPayment.toFixed(2)}) en lugar del pago completo. ¿Continuar?`
@@ -394,13 +398,14 @@ const handleRegisterBalancePayment = async (order) => {
       )
     } catch (error) {
       console.error('Error cambiando forma de pago:', error)
-      alert('No se pudo actualizar la forma de pago. Intenta nuevamente.')
+      notify('No se pudo actualizar la forma de pago. Intenta nuevamente.', 'error')
     }
   }
 
   const handleCancelOrder = async (order) => {
-    const reason = window.prompt(
-      'Motivo de anulación del pedido:'
+    const reason = await askPrompt(
+      'Motivo de anulación del pedido:',
+      { confirmLabel: 'Anular pedido', danger: true, placeholder: 'Ej. el cliente canceló el pedido' }
     )
 
     if (!reason) return
@@ -440,14 +445,15 @@ const handleRegisterBalancePayment = async (order) => {
       order.productId &&
       Number(order.quantity) > 0
 
-    const confirmed = window.confirm(
+    const confirmed = await askConfirm(
       `Esto va a ELIMINAR PERMANENTEMENTE el pedido de "${
         order.customerName || 'sin nombre'
       }".` +
       (willRestock
         ? ` Se devolverán ${order.quantity} unidad(es) al inventario del producto.`
         : '') +
-      ' No se puede deshacer. ¿Continuar?'
+      ' No se puede deshacer. ¿Continuar?',
+      { confirmLabel: 'Eliminar definitivamente', danger: true }
     )
 
     if (!confirmed) return
@@ -493,7 +499,7 @@ const handleRegisterBalancePayment = async (order) => {
       )
     } catch (error) {
       console.error('Error eliminando pedido:', error)
-      alert('No se pudo eliminar el pedido. Revisa la consola.')
+      notify('No se pudo eliminar el pedido. Intenta nuevamente.', 'error')
     }
   }
 
@@ -524,7 +530,12 @@ ${order.previewImage || 'No disponible'}
 
     const encodedMessage = encodeURIComponent(message)
 
-    return `https://wa.me/502${order.phone}?text=${encodedMessage}`
+    // Defensivo: si el pedido es de antes de validar el teléfono al
+    // capturarlo, se limpia aquí también para que el link a WhatsApp
+    // nunca quede roto por letras o espacios guardados previamente.
+    const digitsOnlyPhone = String(order.phone || '').replace(/\D/g, '')
+
+    return `https://wa.me/502${digitsOnlyPhone}?text=${encodedMessage}`
   }
 
   // Buscar usando el mismo nombre que se muestra en la tarjeta.

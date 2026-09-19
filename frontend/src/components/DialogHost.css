@@ -1,0 +1,130 @@
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background: rgba(0, 0, 0, 0.55);
+  animation: dialog-fade-in 0.15s ease;
+}
+
+@keyframes dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog-box {
+  width: 100%;
+  max-width: 420px;
+
+  padding: 24px;
+
+  background: #ffffff;
+  border-top: 4px solid var(--brand-gold, #ffc603);
+  border-radius: 16px;
+
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+
+  animation: dialog-pop-in 0.18s ease;
+}
+
+@keyframes dialog-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dialog-message {
+  margin: 0 0 18px;
+
+  color: #1a1a1a;
+  font-size: 14.5px;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.dialog-input {
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+
+  border: 1px solid #cfd4dc;
+  border-radius: 10px;
+
+  font-size: 14px;
+  outline: none;
+}
+
+.dialog-input:focus {
+  border-color: #d8a900;
+  box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.18);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dialog-btn {
+  padding: 9px 18px;
+
+  border: 1px solid transparent;
+  border-radius: 999px;
+
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dialog-btn-cancel {
+  background: #f1f2f4;
+  color: #333333;
+}
+
+.dialog-btn-cancel:hover {
+  background: #e4e6e9;
+}
+
+.dialog-btn-confirm {
+  background: var(--brand-gold, #ffc603);
+  color: #111111;
+}
+
+.dialog-btn-confirm:hover {
+  background: var(--brand-gold-hover, #e6b200);
+}
+
+.dialog-btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.dialog-btn-danger:hover {
+  background: #b91c1c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-overlay,
+  .dialog-box {
+    animation: none;
+  }
+}

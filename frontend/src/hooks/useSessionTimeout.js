@@ -3,6 +3,7 @@ import { signOut } from 'firebase/auth'
 import { useNavigate } from 'react-router-dom'
 
 import { auth } from '../firebase/config'
+import { notify } from '../services/toastStore'
 
 function useSessionTimeout({
   timeoutMinutes = 15,
@@ -66,8 +67,10 @@ function useSessionTimeout({
 
         warningShownRef.current = true
 
-        alert(
-          `Tu sesión se cerrará en ${warningMinutes} minuto(s) por inactividad.`
+        notify(
+          `Tu sesión se cerrará en ${warningMinutes} minuto(s) por inactividad.`,
+          'warning',
+          warningMinutes * 60 * 1000
         )
       }, warningMs)
 

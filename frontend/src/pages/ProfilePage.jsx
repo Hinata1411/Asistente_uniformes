@@ -197,7 +197,17 @@ function ProfilePage() {
   }, [user?.uid])
 
   const handleInfoChange = (field) => (event) => {
-    setInfoForm((prev) => ({ ...prev, [field]: event.target.value }))
+    let value = event.target.value
+
+    // Igual que en Crear pedido: nombre solo letras, teléfono solo
+    // dígitos, filtrados mientras se escribe.
+    if (field === 'name') {
+      value = value.replace(/[^\p{L}\s'-]/gu, '')
+    } else if (field === 'phone') {
+      value = value.replace(/\D/g, '')
+    }
+
+    setInfoForm((prev) => ({ ...prev, [field]: value }))
     setInfoErrors((prev) => ({ ...prev, [field]: null }))
   }
 
@@ -206,6 +216,8 @@ function ProfilePage() {
 
     if (!infoForm.name.trim()) {
       nextErrors.name = 'El nombre es obligatorio.'
+    } else if (!/^[\p{L}\s'-]+$/u.test(infoForm.name.trim())) {
+      nextErrors.name = 'El nombre solo puede contener letras.'
     }
 
     if (infoForm.phone.trim() && !PHONE_REGEX.test(infoForm.phone.trim())) {

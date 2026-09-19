@@ -35,6 +35,31 @@ function OrdersHistoryPage() {
     loadOrders()
   }, [])
 
+  const handleRegisterBalancePayment = async (order) => {
+    const confirmed = window.confirm(
+      `¿Confirmás que el cliente pagó el saldo pendiente de Q${Number(order.balanceDue || 0).toFixed(2)} y recibió el pedido?`
+    )
+
+    if (!confirmed) return
+
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        balanceDue: 0,
+        status: 'entregado'
+      })
+
+      setOrders((prev) =>
+        prev.map((item) =>
+          item.id === order.id
+            ? { ...item, balanceDue: 0, status: 'entregado' }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error('Error registrando pago de saldo:', error)
+    }
+  }
+
   const handleChangeStatus = async (orderId, newStatus) => {
     try {
       await updateDoc(doc(db, 'orders', orderId), {
@@ -171,6 +196,27 @@ function OrdersHistoryPage() {
     addText(
       `Técnica: ${order.technique || 'No definida'}`
     )
+
+    y += 4
+
+    addText('Cotización:', {
+      fontSize: 13,
+      spacing: 7
+    })
+
+    addText(
+      `Precio base: Q${Number(order.unitBasePrice || 0).toFixed(2)}  ·  Recargo personalización (${order.personalizationSize || 'chico'}): Q${Number(order.personalizationSurcharge || 0).toFixed(2)}`
+    )
+
+    addText(
+      `Precio unitario: Q${Number(order.quotedUnitPrice || 0).toFixed(2)}  ·  Cantidad: ${order.quantity || 0}  ·  Total: Q${Number(order.quoteTotal || 0).toFixed(2)}`
+    )
+
+    addText(
+      `Forma de pago: ${order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%'}  ·  Pagado: Q${Number(order.depositPaid || 0).toFixed(2)}  ·  Saldo pendiente: Q${Number(order.balanceDue || 0).toFixed(2)}`
+    )
+
+    y += 4
 
     addText(
       `Estado: ${order.status || 'pendiente_aprobacion'}`
@@ -383,6 +429,21 @@ function OrdersHistoryPage() {
                     <strong>Técnica:</strong> {o.technique || 'No definida'}
                   </p>
 
+                  {o.quoteTotal > 0 && (
+                    <div className="bg-light border rounded p-2 mb-2">
+                      <p className="mb-1">
+                        <strong>Total cotizado:</strong> Q{Number(o.quoteTotal || 0).toFixed(2)}
+                        {' · '}
+                        <strong>Pagado:</strong> Q{Number(o.depositPaid || 0).toFixed(2)}
+                        {' · '}
+                        <strong>Saldo:</strong>{' '}
+                        <span className={o.balanceDue > 0 ? 'text-danger fw-bold' : 'text-success fw-bold'}>
+                          Q{Number(o.balanceDue || 0).toFixed(2)}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
                   <OrderAIValidationDetails
                     validation={o.aiValidation}
                     validatedAt={o.aiValidatedAt}
@@ -467,6 +528,15 @@ function OrdersHistoryPage() {
                     >
                       Anular
                     </button>
+
+                    {o.balanceDue > 0 && !isCancelled && (
+                      <button
+                        className="btn btn-dark"
+                        onClick={() => handleRegisterBalancePayment(o)}
+                      >
+                        Registrar pago de saldo
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

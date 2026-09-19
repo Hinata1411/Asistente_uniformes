@@ -44,6 +44,7 @@ function CreateProductPage() {
     type: '',
     color: '',
     stock: 0,
+    price: 0,
     sizes: [],
     availableSides: [],
     allowedTechniques: []
@@ -163,6 +164,11 @@ function CreateProductPage() {
           stock:
             Number(
               productData.stock || 0
+            ),
+
+          price:
+            Number(
+              productData.price || 0
             ),
 
           sizes:
@@ -398,6 +404,8 @@ function CreateProductPage() {
       !form.type ||
       !form.color ||
       form.stock < 0 ||
+      !form.price ||
+      Number(form.price) <= 0 ||
       form.sizes.length === 0 ||
       form.availableSides.length === 0 ||
       form.allowedTechniques.length === 0
@@ -462,6 +470,11 @@ function CreateProductPage() {
         stock:
           Number(
             form.stock
+          ),
+
+        price:
+          Number(
+            form.price
           ),
 
         sizes:
@@ -684,6 +697,32 @@ function CreateProductPage() {
                     Number(
                       e.target.value
                     )
+                })
+              }
+              required
+            />
+          </div>
+
+          {/* PRECIO */}
+
+          <div className="col-12 col-md-3">
+            <label className="form-label">
+              Precio de venta (Q)
+            </label>
+
+            <input
+              type="number"
+              className="form-control"
+              min="0"
+              step="0.01"
+              value={
+                form.price
+              }
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  price:
+                    e.target.value
                 })
               }
               required

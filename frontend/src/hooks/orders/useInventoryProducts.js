@@ -74,6 +74,9 @@ const normalizeProduct = (document) => {
     basePrice:
       Number(data.basePrice || 0),
 
+    price:
+      Number(data.price ?? data.basePrice ?? 0),
+
     stock:
       Number(data.stock || 0),
 

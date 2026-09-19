@@ -25,7 +25,7 @@ import { generateOrderPdf } from '../services/orderPdfService'
 import { notify } from '../services/toastStore'
 import { askConfirm, askPrompt } from '../services/dialogStore'
 import '../styles/statusBadges.css'
-import './OrdersHistoryPage.css'
+import '../styles/OrdersHistoryPage.css'
 
 // Ventana de consulta: no vuelve a llamar a la IA ni modifica el pedido.
 function AIValidationPopover({ order }) {

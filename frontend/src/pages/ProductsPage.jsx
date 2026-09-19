@@ -16,7 +16,7 @@ import {
 import { db } from '../firebase/config'
 import { notify } from '../services/toastStore'
 import { askConfirm } from '../services/dialogStore'
-import './ProductsPage.css'
+import '../styles/ProductsPage.css'
 
 function ProductsPage() {
   const navigate = useNavigate()

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { subscribeToasts, getToasts, dismissToast } from '../services/toastStore'
-import './ToastContainer.css'
+import '../styles/ToastContainer.css'
 
 const ICONS = {
   success: '✓',

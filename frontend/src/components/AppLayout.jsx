@@ -5,7 +5,7 @@ import { auth } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 import useSessionTimeout from '../hooks/useSessionTimeout'
 import logo from '../assets/brand/arte-grafia-logo.png'
-import './AppLayout.css'
+import '../styles/AppLayout.css'
 
 const DESKTOP_QUERY = '(min-width: 992px)'
 

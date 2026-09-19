@@ -6,7 +6,7 @@ import { db } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 import { getProductName, getStatusBadge } from '../services/orderFormatting'
 import '../styles/statusBadges.css'
-import './EmployeeDashboardPage.css'
+import '../styles/EmployeeDashboardPage.css'
 
 // Mismo criterio de saludo que usa el panel de administración,
 // para que ambas pantallas se sientan parte de la misma app.

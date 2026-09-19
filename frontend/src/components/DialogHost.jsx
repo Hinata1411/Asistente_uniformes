@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { subscribeDialog, getActiveDialog, resolveDialog } from '../services/dialogStore'
-import './DialogHost.css'
+import '../styles/DialogHost.css'
 
 // Se monta una sola vez en App.jsx. Reemplaza window.confirm() y
 // window.prompt() del navegador por un diálogo modal con el estilo

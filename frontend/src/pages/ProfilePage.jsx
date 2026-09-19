@@ -11,7 +11,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 
-import './ProfilePage.css'
+import './../styles/ProfilePage.css'
 
 function EyeIcon() {
   return (

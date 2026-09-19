@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter,  Routes, Route, Navigate } from 'react-router-dom'
 
 import CreateOrderPage from './pages/CreateOrderPage'
 import OrdersHistoryPage from './pages/OrdersHistoryPage'
@@ -6,6 +6,8 @@ import LoginPage from './pages/LoginPage'
 import PrivateRoute from './components/PrivateRoute'
 import DashboardPage from './pages/DashboardPage'
 import AppLayout from './components/AppLayout'
+import ToastContainer from './components/ToastContainer'
+import DialogHost from './components/DialogHost'
 import ProductsPage from './pages/ProductsPage'
 import CreateProductPage from './pages/CreateProductPage'
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage'
@@ -51,6 +53,9 @@ function RoleRedirect() {
 function App() {
   return (
     <BrowserRouter>
+      <ToastContainer />
+      <DialogHost />
+
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 

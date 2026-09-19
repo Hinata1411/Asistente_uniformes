@@ -24,6 +24,7 @@ import CustomerGarmentForm from '../components/orders/CustomerGarmentForm'
 import InventoryGarmentForm from '../components/orders/InventoryGarmentForm'
 import GarmentSourceSelector from '../components/orders/GarmentSourceSelector'
 import CustomerGarmentPreview from '../components/orders/CustomerGarmentPreview'
+import { notify } from '../services/toastStore'
 
 import './CreateOrderPage.css'
 
@@ -274,11 +275,11 @@ function CreateOrderPage() {
 
   try {
     if (!localDateValue(form.orderDate) || !localDateValue(form.expectedDeliveryDate)) {
-      alert('Indica una fecha válida de toma del pedido y de entrega prevista.')
+      notify('Indica una fecha válida de toma del pedido y de entrega prevista.', 'warning')
       return
     }
     if (form.expectedDeliveryDate < form.orderDate) {
-      alert('La entrega prevista no puede ser anterior a la toma del pedido.')
+      notify('La entrega prevista no puede ser anterior a la toma del pedido.', 'warning')
       return
     }
 
@@ -296,8 +297,25 @@ function CreateOrderPage() {
       !form.technique ||
       !form.customizationSide
     ) {
-      alert(
-        'Completa todos los datos del pedido'
+      notify(
+        'Completa todos los datos del pedido',
+        'warning'
+      )
+      return
+    }
+
+    if (!/^[\p{L}\s'-]+$/u.test(form.customerName.trim())) {
+      notify(
+        'El nombre del cliente solo puede contener letras, sin números.',
+        'warning'
+      )
+      return
+    }
+
+    if (!/^\d{7,8}$/.test(form.phone)) {
+      notify(
+        'El teléfono debe contener solo números (7 u 8 dígitos), sin letras ni espacios.',
+        'warning'
       )
       return
     }
@@ -306,8 +324,9 @@ function CreateOrderPage() {
       isInventoryGarment &&
       !form.productId
     ) {
-      alert(
-        'Selecciona un producto del inventario'
+      notify(
+        'Selecciona un producto del inventario',
+        'warning'
       )
       return
     }
@@ -316,8 +335,9 @@ function CreateOrderPage() {
       isInventoryGarment &&
       !selectedProduct
     ) {
-      alert(
-        'Selecciona un producto válido del inventario'
+      notify(
+        'Selecciona un producto válido del inventario',
+        'warning'
       )
       return
     }
@@ -330,8 +350,9 @@ function CreateOrderPage() {
         !customerGarmentImage
       )
     ) {
-      alert(
-        'Completa los datos de la prenda del cliente y carga una fotografía'
+      notify(
+        'Completa los datos de la prenda del cliente y carga una fotografía',
+        'warning'
       )
       return
     }
@@ -345,15 +366,17 @@ function CreateOrderPage() {
       isInventoryGarment &&
       unitBasePrice <= 0
     ) {
-      alert(
-        'El producto seleccionado no tiene precio configurado. Definilo en Productos antes de continuar.'
+      notify(
+        'El producto seleccionado no tiene precio configurado. Definilo en Productos antes de continuar.',
+        'warning'
       )
       return
     }
 
     if (missingPricingRule) {
-      alert(
-        `No hay precios de personalización configurados para la técnica "${form.technique}". Revisa la colección pricingRules en Firestore.`
+      notify(
+        `No hay precios de personalización configurados para la técnica "${form.technique}". Revisa la colección pricingRules en Firestore.`,
+        'error'
       )
       return
     }
@@ -362,8 +385,9 @@ function CreateOrderPage() {
       !requestedQuantity ||
       requestedQuantity <= 0
     ) {
-      alert(
-        'La cantidad debe ser mayor a 0'
+      notify(
+        'La cantidad debe ser mayor a 0',
+        'warning'
       )
       return
     }
@@ -380,23 +404,26 @@ function CreateOrderPage() {
         real antes de guardar.
       */
       if (!editingOrder) {
-        alert(
-          `La cantidad solicitada supera el stock disponible (${selectedProduct.stock})`
+        notify(
+          `La cantidad solicitada supera el stock disponible (${selectedProduct.stock})`,
+          'warning'
         )
         return
       }
     }
 
     if (!order?.previewImage) {
-      alert(
-        'Debes generar una vista previa de la prenda'
+      notify(
+        'Debes generar una vista previa de la prenda',
+        'warning'
       )
       return
     }
 
     if (!aiResult) {
-      alert(
-        'Debes validar el pedido con IA antes de guardarlo'
+      notify(
+        'Debes validar el pedido con IA antes de guardarlo',
+        'warning'
       )
       return
     }
@@ -817,8 +844,9 @@ function CreateOrderPage() {
 
       await reloadProducts()
 
-      alert(
-        'Pedido actualizado correctamente'
+      notify(
+        'Pedido actualizado correctamente',
+        'success'
       )
 
       resetForm()
@@ -1021,8 +1049,9 @@ function CreateOrderPage() {
 
     await reloadProducts()
 
-    alert(
-      'Pedido guardado correctamente'
+    notify(
+      'Pedido guardado correctamente',
+      'success'
     )
 
     resetForm()
@@ -1033,8 +1062,9 @@ function CreateOrderPage() {
       error
     )
 
-    alert(
-      `Ocurrió un error al guardar el pedido: ${error.message}`
+    notify(
+      `Ocurrió un error al guardar el pedido: ${error.message}`,
+      'error'
     )
   } finally {
     setIsSaving(false)
@@ -1054,8 +1084,9 @@ function CreateOrderPage() {
         !form.quantity ||
         !form.customizationSide
       ) {
-        alert(
-          'Completa talla, técnica, cantidad y área de personalización'
+        notify(
+          'Completa talla, técnica, cantidad y área de personalización',
+          'warning'
         )
         return
       }
@@ -1064,8 +1095,9 @@ function CreateOrderPage() {
         isInventoryGarment &&
         !selectedProduct
       ) {
-        alert(
-          'Selecciona un producto válido del inventario'
+        notify(
+          'Selecciona un producto válido del inventario',
+          'warning'
         )
         return
       }
@@ -1078,15 +1110,17 @@ function CreateOrderPage() {
           !customerGarmentImage
         )
       ) {
-        alert(
-          'Completa los datos de la prenda del cliente y carga una fotografía'
+        notify(
+          'Completa los datos de la prenda del cliente y carga una fotografía',
+          'warning'
         )
         return
       }
 
       if (form.quantity <= 0) {
-        alert(
-          'La cantidad debe ser mayor a 0'
+        notify(
+          'La cantidad debe ser mayor a 0',
+          'warning'
         )
         return
       }
@@ -1095,8 +1129,9 @@ function CreateOrderPage() {
         isInventoryGarment &&
         form.quantity > selectedProduct.stock
       ) {
-        alert(
-          `Solo hay ${selectedProduct.stock} unidades disponibles`
+        notify(
+          `Solo hay ${selectedProduct.stock} unidades disponibles`,
+          'warning'
         )
         return
       }
@@ -1204,8 +1239,9 @@ function CreateOrderPage() {
         error
       )
 
-      alert(
-        `Error con IA: ${error.message}`
+      notify(
+        `Error con IA: ${error.message}`,
+        'error'
       )
     } finally {
       setLoadingAI(false)
@@ -1313,8 +1349,10 @@ function CreateOrderPage() {
               onChange={(e) =>
                 setForm({
                   ...form,
+                  // Solo letras (con acentos/ñ), espacios, apóstrofe
+                  // y guion: sin números ni otros símbolos.
                   customerName:
-                    e.target.value
+                    e.target.value.replace(/[^\p{L}\s'-]/gu, '')
                 })
               }
             />
@@ -1326,17 +1364,21 @@ function CreateOrderPage() {
             </label>
 
             <input
-              type="text"
+              type="tel"
+              inputMode="numeric"
+              maxLength={8}
               className="form-control"
-              placeholder="Ej. 5555 5555"
+              placeholder="Ej. 55555555"
               value={
                 form.phone
               }
               onChange={(e) =>
                 setForm({
                   ...form,
+                  // Solo dígitos: el número se usa tal cual para
+                  // armar el link de WhatsApp más adelante.
                   phone:
-                    e.target.value
+                    e.target.value.replace(/\D/g, '')
                 })
               }
             />

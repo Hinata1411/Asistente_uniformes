@@ -26,6 +26,8 @@ import {
   createProduct
 } from '../services/productsService'
 
+import { notify } from '../services/toastStore'
+
 import './CreateProductPage.css'
 
 function CreateProductPage() {
@@ -135,8 +137,9 @@ function CreateProductPage() {
             )
 
           if (!productSnap.exists()) {
-            alert(
-              'El producto no existe'
+            notify(
+              'El producto no existe',
+              'error'
             )
 
             navigate('/productos')
@@ -216,8 +219,9 @@ function CreateProductPage() {
           error
         )
 
-        alert(
-          'No se pudo cargar el producto'
+        notify(
+          'No se pudo cargar el producto',
+          'error'
         )
       } finally {
         setLoadingProduct(false)
@@ -278,8 +282,9 @@ function CreateProductPage() {
         file.type
       )
     ) {
-      alert(
-        'La imagen debe ser PNG, JPG, JPEG o WEBP.'
+      notify(
+        'La imagen debe ser PNG, JPG, JPEG o WEBP.',
+        'warning'
       )
 
       return false
@@ -291,8 +296,9 @@ function CreateProductPage() {
     if (
       file.size > maxSize
     ) {
-      alert(
-        'La imagen no puede superar los 5 MB.'
+      notify(
+        'La imagen no puede superar los 5 MB.',
+        'warning'
       )
 
       return false
@@ -410,8 +416,9 @@ function CreateProductPage() {
       form.availableSides.length === 0 ||
       form.allowedTechniques.length === 0
     ) {
-      alert(
-        'Completa todos los campos obligatorios'
+      notify(
+        'Completa todos los campos obligatorios',
+        'warning'
       )
 
       return
@@ -421,8 +428,9 @@ function CreateProductPage() {
       !isEditing &&
       !frontImageFile
     ) {
-      alert(
-        'Selecciona la imagen frontal del producto'
+      notify(
+        'Selecciona la imagen frontal del producto',
+        'warning'
       )
 
       return
@@ -515,8 +523,9 @@ function CreateProductPage() {
           productData
         )
 
-        alert(
-          'Producto actualizado correctamente'
+        notify(
+          'Producto actualizado correctamente',
+          'success'
         )
       } else {
         await createProduct({
@@ -527,8 +536,9 @@ function CreateProductPage() {
               .toISOString()
         })
 
-        alert(
-          'Producto registrado correctamente'
+        notify(
+          'Producto registrado correctamente',
+          'success'
         )
       }
 
@@ -543,10 +553,11 @@ function CreateProductPage() {
         error
       )
 
-      alert(
+      notify(
         isEditing
           ? `No se pudo actualizar el producto: ${error.message}`
-          : `No se pudo registrar el producto: ${error.message}`
+          : `No se pudo registrar el producto: ${error.message}`,
+        'error'
       )
     } finally {
       setLoading(false)

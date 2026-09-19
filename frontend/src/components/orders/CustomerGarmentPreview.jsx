@@ -1,3 +1,5 @@
+import { notify } from '../../services/toastStore'
+
 function CustomerGarmentPreview({
   form,
   onImageChange
@@ -10,7 +12,7 @@ function CustomerGarmentPreview({
     }
 
     if (!file.type.startsWith('image/')) {
-      alert('Selecciona un archivo de imagen válido.')
+      notify('Selecciona un archivo de imagen válido.', 'warning')
       return
     }
 

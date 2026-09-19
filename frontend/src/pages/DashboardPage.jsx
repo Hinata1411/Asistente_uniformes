@@ -331,7 +331,16 @@ function DashboardPage() {
     orders.forEach((order) => {
       if (order.status === 'anulado') return
 
-      const key = toDateKey(order.expectedDeliveryDate)
+      // Si el pedido ya se entregó, se ubica en el calendario en la
+      // fecha real de entrega (deliveredAt) y no en la fecha que
+      // originalmente se había previsto, para que no quede "atrasado"
+      // en el calendario cuando en realidad ya se entregó otro día.
+      const dateSource =
+        order.status === 'entregado' && order.deliveredAt
+          ? order.deliveredAt
+          : order.expectedDeliveryDate
+
+      const key = toDateKey(dateSource)
       if (!key) return
 
       if (!map[key]) map[key] = []
@@ -627,7 +636,7 @@ function DashboardPage() {
                           <div className="tooltip-section">
                             <p className="tooltip-title">
                               <span className="calendar-legend-dot calendar-legend-dot-delivery" />
-                              {dayDeliveries.length} entrega{dayDeliveries.length === 1 ? '' : 's'} programada{dayDeliveries.length === 1 ? '' : 's'}
+                              {dayDeliveries.length} entrega{dayDeliveries.length === 1 ? '' : 's'}
                             </p>
 
                             <ul>

@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { useNavigate } from 'react-router-dom'
 
 import { auth } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
+import logo from '../assets/brand/arte-grafia-logo.png'
+import './LoginPage.css'
 
 function LoginPage() {
   const [email, setEmail] = useState('')
@@ -12,11 +14,36 @@ function LoginPage() {
 
   const navigate = useNavigate()
 
-  const {
-    user,
-    role,
-    loading
-  } = useAuth()
+  const { user, role, loading } = useAuth()
+
+  const prefersReducedMotion = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    []
+  )
+
+  // Animación de bienvenida: logo centrado que se desvanece hacia el login.
+  const [introStage, setIntroStage] = useState(
+    prefersReducedMotion ? 'hidden' : 'show'
+  )
+
+  useEffect(() => {
+    if (prefersReducedMotion) return
+
+    const fadeTimer = setTimeout(() => {
+      setIntroStage('fade')
+    }, 850)
+
+    const hideTimer = setTimeout(() => {
+      setIntroStage('hidden')
+    }, 850 + 500)
+
+    return () => {
+      clearTimeout(fadeTimer)
+      clearTimeout(hideTimer)
+    }
+  }, [prefersReducedMotion])
 
   useEffect(() => {
     if (loading) return
@@ -24,24 +51,14 @@ function LoginPage() {
     if (!user || !role) return
 
     if (role === 'admin') {
-      navigate('/dashboard', {
-        replace: true
-      })
-
+      navigate('/dashboard', { replace: true })
       return
     }
 
     if (role === 'empleado') {
-      navigate('/empleado', {
-        replace: true
-      })
+      navigate('/empleado', { replace: true })
     }
-  }, [
-    user,
-    role,
-    loading,
-    navigate
-  ])
+  }, [user, role, loading, navigate])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -49,11 +66,7 @@ function LoginPage() {
     try {
       setLoginLoading(true)
 
-      await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      )
+      await signInWithEmailAndPassword(auth, email, password)
 
       /*
         No hacemos navigate aquí.
@@ -64,10 +77,7 @@ function LoginPage() {
         la redirección correspondiente.
       */
     } catch (error) {
-      console.error(
-        'Error login:',
-        error
-      )
+      console.error('Error login:', error)
 
       alert('Credenciales incorrectas')
     } finally {
@@ -76,64 +86,67 @@ function LoginPage() {
   }
 
   return (
-    <div
-      className="container mt-5 d-flex justify-content-center align-items-center"
-      style={{ minHeight: '80vh' }}
-    >
-      <div className="row justify-content-center w-100">
-        <div className="col-md-4">
-          <div className="card p-4 shadow-lg border-0">
-            <h3 className="text-center mb-3">
-              Iniciar sesión
-            </h3>
+    <div className="login-page">
+      {introStage !== 'hidden' && (
+        <div
+          className={`login-intro ${
+            introStage === 'fade' ? 'login-intro-fade' : ''
+          }`}
+        >
+          <img
+            src={logo}
+            alt="Arte Grafia"
+            className="login-intro-logo"
+          />
+        </div>
+      )}
 
-            <form onSubmit={handleLogin}>
-              <div className="mb-3">
-                <label className="form-label">
-                  Email
-                </label>
+      <div className="login-card-wrapper">
+        <div className="login-card">
+          <img
+            src={logo}
+            alt="Arte Grafia"
+            className="login-card-logo"
+          />
 
-                <input
-                  type="email"
-                  className="form-control"
-                  value={email}
-                  onChange={(e) =>
-                    setEmail(e.target.value)
-                  }
-                  required
-                />
-              </div>
+          <h3 className="login-title">Iniciar sesión</h3>
+          <p className="login-subtitle">
+            Asistente de Personalización de Uniformes
+          </p>
 
-              <div className="mb-3">
-                <label className="form-label">
-                  Contraseña
-                </label>
+          <form onSubmit={handleLogin}>
+            <div className="login-field">
+              <label className="login-label">Email</label>
 
-                <input
-                  type="password"
-                  className="form-control"
-                  value={password}
-                  onChange={(e) =>
-                    setPassword(e.target.value)
-                  }
-                  required
-                />
-              </div>
+              <input
+                type="email"
+                className="login-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
 
-              <button
-                type="submit"
-                className="btn btn-primary w-100"
-                disabled={
-                  loginLoading ||
-                  loading
-                }
-              >
-                {loginLoading
-                  ? 'Ingresando...'
-                  : 'Ingresar'}
-              </button>
-            </form>
-          </div>
+            <div className="login-field">
+              <label className="login-label">Contraseña</label>
+
+              <input
+                type="password"
+                className="login-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="login-button"
+              disabled={loginLoading || loading}
+            >
+              {loginLoading ? 'Ingresando...' : 'Ingresar'}
+            </button>
+          </form>
         </div>
       </div>
     </div>

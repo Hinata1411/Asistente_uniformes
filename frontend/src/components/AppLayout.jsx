@@ -1,18 +1,51 @@
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase/config'
 import { useAuth } from '../context/AuthContext'
 import useSessionTimeout from '../hooks/useSessionTimeout'
+import logo from '../assets/brand/arte-grafia-logo.png'
 import './AppLayout.css'
+
+const DESKTOP_QUERY = '(min-width: 992px)'
 
 function AppLayout({ children }) {
   const { user, role } = useAuth()
   const location = useLocation()
 
+  const [isDesktop, setIsDesktop] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia(DESKTOP_QUERY).matches
+  )
+
+  // En escritorio la barra inicia abierta; en móvil, cerrada.
+  const [sidebarOpen, setSidebarOpen] = useState(isDesktop)
+
   useSessionTimeout({
     timeoutMinutes: 30,
     warningMinutes: 15
   })
+
+  useEffect(() => {
+    const mql = window.matchMedia(DESKTOP_QUERY)
+
+    const handleChange = (e) => {
+      setIsDesktop(e.matches)
+      setSidebarOpen(e.matches)
+    }
+
+    mql.addEventListener('change', handleChange)
+
+    return () => mql.removeEventListener('change', handleChange)
+  }, [])
+
+  // En móvil, cerrar la barra automáticamente al tocar un link del menú.
+  const handleNavClick = () => {
+    if (!isDesktop) {
+      setSidebarOpen(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -22,22 +55,63 @@ function AppLayout({ children }) {
     }
   }
 
+  const toggleSidebar = () => setSidebarOpen((prev) => !prev)
+
   const isActive = (path) => location.pathname === path
+
+  const sidebarClassName = [
+    'app-sidebar',
+    isDesktop && !sidebarOpen ? 'is-collapsed' : '',
+    !isDesktop && sidebarOpen ? 'is-open-mobile' : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const toggleClassName = [
+    'sidebar-toggle',
+    isDesktop
+      ? sidebarOpen
+        ? 'toggle-desktop-open'
+        : 'toggle-desktop-collapsed'
+      : sidebarOpen
+        ? 'toggle-mobile-open'
+        : 'toggle-mobile-closed'
+  ].join(' ')
 
   return (
     <div className="app-layout">
-      <aside className="app-sidebar">
-        <div className="sidebar-brand">
-          <div className="sidebar-logo">🎽</div>
+      {!isDesktop && sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-          <div>
+      <button
+        type="button"
+        className={toggleClassName}
+        aria-label="Mostrar u ocultar menú"
+        aria-expanded={sidebarOpen}
+        onClick={toggleSidebar}
+      >
+        <span className={`toggle-arrow ${sidebarOpen ? 'is-open' : ''}`} />
+      </button>
+
+      <aside className={sidebarClassName}>
+        <div className="sidebar-brand">
+          <img
+            src={logo}
+            alt="Arte Grafia"
+            className="sidebar-logo-img"
+          />
+
+          <div className="sidebar-brand-text">
             <h4>Asistente</h4>
             <span>Uniformes</span>
           </div>
         </div>
 
-        <nav className="sidebar-menu">
-          
+        <nav className="sidebar-menu" onClick={handleNavClick}>
           {role === 'admin' && (
             <>
               <Link
@@ -47,12 +121,10 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">⌂</span>
-                Dashboard
+                <span className="sidebar-label">Dashboard</span>
               </Link>
 
-              <div className="sidebar-section-title">
-                Pedidos
-              </div>
+              <div className="sidebar-section-title">Pedidos</div>
 
               <Link
                 to="/crearpedido"
@@ -61,7 +133,7 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">＋</span>
-                Crear pedido
+                <span className="sidebar-label">Crear pedido</span>
               </Link>
 
               <Link
@@ -71,7 +143,7 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">▤</span>
-                Historial
+                <span className="sidebar-label">Historial</span>
               </Link>
 
               <Link
@@ -81,7 +153,7 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">▦</span>
-                Productos
+                <span className="sidebar-label">Productos</span>
               </Link>
             </>
           )}
@@ -95,12 +167,10 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">⌂</span>
-                Inicio
+                <span className="sidebar-label">Inicio</span>
               </Link>
 
-              <div className="sidebar-section-title">
-                Operación
-              </div>
+              <div className="sidebar-section-title">Operación</div>
 
               <Link
                 to="/crearpedido"
@@ -109,7 +179,7 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">＋</span>
-                Crear pedido
+                <span className="sidebar-label">Crear pedido</span>
               </Link>
 
               <Link
@@ -119,11 +189,10 @@ function AppLayout({ children }) {
                 }`}
               >
                 <span className="sidebar-icon">▤</span>
-                Pedidos
+                <span className="sidebar-label">Pedidos</span>
               </Link>
             </>
           )}
-
         </nav>
 
         <div className="sidebar-footer">
@@ -133,30 +202,24 @@ function AppLayout({ children }) {
             </div>
 
             <div className="user-info">
-              <span className="user-email">
-                {user?.email}
-              </span>
+              <span className="user-email">{user?.email}</span>
 
               <span className="user-role">
-                {role === 'admin'
-                  ? 'Administrador'
-                  : 'Empleado'}
+                {role === 'admin' ? 'Administrador' : 'Empleado'}
               </span>
             </div>
           </div>
 
-          <button
-            className="sidebar-logout"
-            onClick={handleLogout}
-          >
-            Cerrar sesión
+          <button className="sidebar-logout" onClick={handleLogout}>
+            <span className="sidebar-label">Cerrar sesión</span>
+            <span className="sidebar-icon sidebar-icon-only">⏻</span>
           </button>
         </div>
       </aside>
 
       <div className="app-main">
         <header className="app-header">
-          <div>
+          <div className="header-left">
             <span className="header-label">
               Asistente de Personalización de Uniformes
             </span>
@@ -167,9 +230,7 @@ function AppLayout({ children }) {
           </div>
         </header>
 
-        <main className="app-content">
-          {children}
-        </main>
+        <main className="app-content">{children}</main>
       </div>
     </div>
   )

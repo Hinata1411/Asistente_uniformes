@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import useInventoryProducts from '../hooks/orders/useInventoryProducts'
+import { getPersonalizationPricing } from '../services/pricingService'
 
 import { db, storage } from '../firebase/config'
 
@@ -52,18 +53,77 @@ function CreateOrderPage() {
     customerGarmentType: '',
     customerGarmentDescription: '',
     customerGarmentColor: '',
+    customerGarmentPrice: '',
 
     size: '',
     quantity: 1,
     technique: '',
-    customizationSide: ''
+    customizationSide: '',
+
+    personalizationSize: 'chico',
+    paymentPlan: 'anticipo_50'
   }
 
   const [form, setForm] = useState(initialForm)
 
+  const [personalizationPricing, setPersonalizationPricing] = useState({})
+
+  useEffect(() => {
+    const loadPricing = async () => {
+      try {
+        const pricing = await getPersonalizationPricing()
+        setPersonalizationPricing(pricing)
+      } catch (error) {
+        console.error(
+          'Error cargando precios de personalización:',
+          error
+        )
+      }
+    }
+
+    loadPricing()
+  }, [])
+
   const selectedProduct = inventoryProducts.find(
     (item) => item.id === form.productId
   )
+
+  const isInventoryGarment =
+    form.garmentSource === 'inventory'
+
+  // =========================================
+  // COTIZACIÓN (se recalcula en cada render)
+  // =========================================
+
+  const quantityForQuote = Number(form.quantity) || 0
+
+  const unitBasePrice = isInventoryGarment
+    ? Number(selectedProduct?.price || 0)
+    : Number(form.customerGarmentPrice || 0)
+
+  const techniquePricing =
+    personalizationPricing[form.technique]
+
+  const personalizationSurcharge = techniquePricing
+    ? Number(
+        techniquePricing[form.personalizationSize] || 0
+      )
+    : 0
+
+  const missingPricingRule =
+    Boolean(form.technique) && !techniquePricing
+
+  const unitPrice = unitBasePrice + personalizationSurcharge
+
+  const quoteTotal = unitPrice * quantityForQuote
+
+  const depositPaid =
+    form.paymentPlan === 'completo'
+      ? quoteTotal
+      : Math.round(quoteTotal * 0.5 * 100) / 100
+
+  const balanceDue =
+    Math.round((quoteTotal - depositPaid) * 100) / 100
 
   useEffect(() => {
     if (location.state?.orderToEdit) {
@@ -91,6 +151,12 @@ function CreateOrderPage() {
         customerGarmentColor:
           order.customerGarment?.color || '',
 
+        customerGarmentPrice:
+          order.garmentSource === 'customer' &&
+          order.unitBasePrice
+            ? String(order.unitBasePrice)
+            : '',
+
         size:
           order.size || '',
 
@@ -101,7 +167,13 @@ function CreateOrderPage() {
           order.technique || '',
 
         customizationSide:
-          order.customizationSide || ''
+          order.customizationSide || '',
+
+        personalizationSize:
+          order.personalizationSize || 'chico',
+
+        paymentPlan:
+          order.paymentPlan || 'anticipo_50'
       })
 
       setEditingOrder(order)
@@ -127,9 +199,6 @@ function CreateOrderPage() {
 
   const handleSaveOrder = async (order) => {
   try {
-    const isInventoryGarment =
-      form.garmentSource === 'inventory'
-
     const isCustomerGarment =
       form.garmentSource === 'customer'
 
@@ -183,6 +252,24 @@ function CreateOrderPage() {
     ) {
       alert(
         'Completa los datos de la prenda del cliente y carga una fotografía'
+      )
+      return
+    }
+
+    if (
+      unitBasePrice <= 0
+    ) {
+      alert(
+        isInventoryGarment
+          ? 'El producto seleccionado no tiene precio configurado. Definilo en Productos antes de continuar.'
+          : 'Ingresa el precio base de la prenda del cliente en la sección de Cotización.'
+      )
+      return
+    }
+
+    if (missingPricingRule) {
+      alert(
+        `No hay precios de personalización configurados para la técnica "${form.technique}". Revisa la colección pricingRules en Firestore.`
       )
       return
     }
@@ -547,6 +634,25 @@ function CreateOrderPage() {
               aiValidatedAt:
                 new Date().toISOString(),
 
+              unitBasePrice,
+
+              personalizationSize:
+                form.personalizationSize,
+
+              personalizationSurcharge,
+
+              quotedUnitPrice:
+                unitPrice,
+
+              quoteTotal,
+
+              paymentPlan:
+                form.paymentPlan,
+
+              depositPaid,
+
+              balanceDue,
+
               updatedAt:
                 new Date().toISOString()
             }
@@ -627,8 +733,37 @@ function CreateOrderPage() {
       aiValidatedAt:
         new Date().toISOString(),
 
+      // =========================================
+      // COTIZACIÓN Y PAGO
+      // =========================================
+
+      unitBasePrice,
+
+      personalizationSize:
+        form.personalizationSize,
+
+      personalizationSurcharge,
+
+      quotedUnitPrice:
+        unitPrice,
+
+      quoteTotal,
+
+      paymentPlan:
+        form.paymentPlan,
+
+      depositPaid,
+
+      balanceDue,
+
+      /*
+        El anticipo (o pago completo) ya se registra
+        en este mismo formulario, así que el pedido
+        entra directo como "aprobado" en vez de quedar
+        "pendiente_aprobacion".
+      */
       status:
-        'pendiente_aprobacion',
+        'aprobado',
 
       createdAt:
         new Date().toISOString()
@@ -1073,11 +1208,168 @@ function CreateOrderPage() {
         )}
       </section>
 
-      {/* PASO 3 */}
+      {/* PASO 3: COTIZACIÓN */}
       <section className="order-section">
         <div className="order-section-header">
           <span className="section-number">
             3
+          </span>
+
+          <div>
+            <h3>
+              Cotización y forma de pago
+            </h3>
+
+            <p>
+              Calculá el total del pedido según la prenda y la técnica de personalización.
+            </p>
+          </div>
+        </div>
+
+        {isInventoryGarment && (
+          <p className="quote-hint">
+            {selectedProduct
+              ? `Precio de la prenda seleccionada: Q${Number(selectedProduct.price || 0).toFixed(2)}`
+              : 'Seleccioná un producto del inventario para ver su precio.'}
+          </p>
+        )}
+
+        {!isInventoryGarment && (
+          <div className="row g-3 mb-2">
+            <div className="col-12 col-md-4">
+              <label className="form-label">
+                Precio base de la prenda (Q)
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="form-control"
+                value={form.customerGarmentPrice}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    customerGarmentPrice: e.target.value
+                  })
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="row g-3 mb-2">
+          <div className="col-12 col-md-4">
+            <label className="form-label">
+              Tamaño de la personalización
+            </label>
+
+            <select
+              className="form-select"
+              value={form.personalizationSize}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  personalizationSize: e.target.value
+                })
+              }
+            >
+              <option value="chico">Chico (8x10")</option>
+              <option value="mediano">Mediano (16x20")</option>
+              <option value="grande">Grande (30x23")</option>
+            </select>
+          </div>
+        </div>
+
+        {missingPricingRule && (
+          <div className="alert alert-warning">
+            No hay precios configurados en Firestore para la técnica "{form.technique}".
+          </div>
+        )}
+
+        {unitPrice > 0 && (
+          <div className="quote-summary">
+            <div className="quote-row">
+              <span>Precio base de la prenda</span>
+              <strong>Q{unitBasePrice.toFixed(2)}</strong>
+            </div>
+
+            <div className="quote-row">
+              <span>Recargo por personalización ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
+              <strong>Q{personalizationSurcharge.toFixed(2)}</strong>
+            </div>
+
+            <div className="quote-row">
+              <span>Precio unitario</span>
+              <strong>Q{unitPrice.toFixed(2)}</strong>
+            </div>
+
+            <div className="quote-row">
+              <span>Cantidad</span>
+              <strong>{quantityForQuote}</strong>
+            </div>
+
+            <div className="quote-row quote-total">
+              <span>Total cotizado</span>
+              <strong>Q{quoteTotal.toFixed(2)}</strong>
+            </div>
+
+            <div className="quote-payment-options">
+              <label>
+                <input
+                  type="radio"
+                  name="paymentPlan"
+                  value="anticipo_50"
+                  checked={form.paymentPlan === 'anticipo_50'}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      paymentPlan: 'anticipo_50'
+                    })
+                  }
+                />
+                Anticipo 50%
+              </label>
+
+              <label>
+                <input
+                  type="radio"
+                  name="paymentPlan"
+                  value="completo"
+                  checked={form.paymentPlan === 'completo'}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      paymentPlan: 'completo'
+                    })
+                  }
+                />
+                Pago completo
+              </label>
+            </div>
+
+            <div className="quote-row">
+              <span>
+                {form.paymentPlan === 'completo'
+                  ? 'Total a pagar ahora'
+                  : 'Anticipo a pagar ahora (50%)'}
+              </span>
+              <strong>Q{depositPaid.toFixed(2)}</strong>
+            </div>
+
+            <div className="quote-row">
+              <span>Saldo pendiente</span>
+              <strong>Q{balanceDue.toFixed(2)}</strong>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* PASO 4 */}
+      <section className="order-section">
+        <div className="order-section-header">
+          <span className="section-number">
+            4
           </span>
 
           <div>
@@ -1148,7 +1440,7 @@ function CreateOrderPage() {
         />
       </section>
 
-      {/* PASO 4 */}
+      {/* PASO 5 */}
       <section className="order-section">
         <div className="order-section-header">
           <span className="section-number ai-number">

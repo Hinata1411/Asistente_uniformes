@@ -2,8 +2,7 @@ const VALID_TECHNIQUES = [
   'DTF',
   'Bordado',
   'Sublimación',
-  'Vinil textil',
-  'Serigrafía'
+  'Vinil textil'
 ]
 
 const VALID_SIDES = [

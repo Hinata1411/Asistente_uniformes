@@ -85,6 +85,14 @@
   font-weight: 700;
 }
 
+.product-price {
+  margin-top: 2px;
+
+  color: #92720a;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .stock-badge {
   display: inline-flex;
   align-items: center;

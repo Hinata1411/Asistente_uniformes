@@ -233,6 +233,9 @@ function ProductsPage() {
                   <h3>
                     {product.name}
                   </h3>
+                  <div className="product-price">
+                    Q{Number(product.price || 0).toFixed(2)}
+                  </div>
                   <span
                     className={`badge ${
                       product.active === false

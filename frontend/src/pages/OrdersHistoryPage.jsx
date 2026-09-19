@@ -231,6 +231,33 @@ const historyCompactStyles = `
   background:#f1f2f4; border:0; border-radius:7px;
   width:32px; height:32px; font-size:22px; cursor:pointer;
 }
+.orders-history-compact .history-payment-plan-select {
+  min-width:180px;
+}
+.orders-history-compact .history-header {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  flex-wrap:wrap; gap:14px; margin-bottom:18px;
+}
+.orders-history-compact .history-date-filter {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 16px;
+  background:#111; border:2px solid #ffc603; border-radius:999px;
+}
+.orders-history-compact .history-date-filter label {
+  margin:0; color:#ffc603; font-size:12px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.03em; white-space:nowrap;
+}
+.orders-history-compact .history-date-filter input[type="date"] {
+  border:none; background:transparent; color:#fff;
+  font-size:14px; font-weight:600; padding:2px 4px;
+}
+.orders-history-compact .history-date-filter input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor:pointer;
+}
+@media (max-width:575px) {
+  .orders-history-compact .history-date-filter { width:100%; }
+}
 @media (max-width:767px) {
   .orders-history-compact .history-order-image { height:160px; }
 }
@@ -246,6 +273,10 @@ function OrdersHistoryPage() {
   const [orders, setOrders] = useState([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  // Por defecto el filtro arranca en la fecha de hoy.
+  const [dateFilter, setDateFilter] = useState(() =>
+    localDateValue(new Date())
+  )
 
   const navigate = useNavigate()
 
@@ -286,6 +317,7 @@ function OrdersHistoryPage() {
     'pendiente_aprobacion',
     'aprobado',
     'en_produccion',
+    'en_arreglo',
     'terminado',
     'entregado'
   ]
@@ -455,6 +487,71 @@ const handleRegisterBalancePayment = async (order) => {
   await handleChangeStatus(order.id, 'entregado')
 }
 
+  const handleChangePaymentPlan = async (order, newPlan) => {
+    if (!newPlan || newPlan === order.paymentPlan) return
+
+    if (['entregado', 'anulado'].includes(order.status)) {
+      alert('No se puede cambiar la forma de pago de un pedido entregado o anulado.')
+      return
+    }
+
+    const total = Number(order.quoteTotal) || 0
+
+    const roundMoney = (value) =>
+      Math.round((value + Number.EPSILON) * 100) / 100
+
+    const newInitialPayment =
+      newPlan === 'completo'
+        ? total
+        : roundMoney(total * 0.5)
+
+    const alreadyApproved =
+      order.status && order.status !== 'pendiente_aprobacion'
+
+    const confirmed = window.confirm(
+      newPlan === 'completo'
+        ? `El cliente pagará el total (Q${total.toFixed(2)}) en lugar del anticipo del 50%. ¿Continuar?`
+        : `El cliente pagará un anticipo del 50% (Q${newInitialPayment.toFixed(2)}) en lugar del pago completo. ¿Continuar?`
+    )
+
+    if (!confirmed) return
+
+    const changes = {
+      paymentPlan: newPlan,
+      initialPaymentAmount: newInitialPayment,
+      updatedAt: new Date().toISOString()
+    }
+
+    // Si el pedido ya fue aprobado (el anticipo/pago inicial ya se
+    // registró como cobrado), actualizamos también lo que se
+    // considera pagado y el saldo pendiente.
+    if (alreadyApproved && order.status !== 'entregado') {
+      changes.depositPaid = newInitialPayment
+      changes.balanceDue = roundMoney(
+        Math.max(0, total - newInitialPayment)
+      )
+      changes.paymentStatus = getPaymentSummary({
+        ...order,
+        ...changes
+      }).status
+    }
+
+    try {
+      await updateDoc(doc(db, 'orders', order.id), changes)
+
+      setOrders((prev) =>
+        prev.map((item) =>
+          item.id === order.id
+            ? { ...item, ...changes }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error('Error cambiando forma de pago:', error)
+      alert('No se pudo actualizar la forma de pago. Intenta nuevamente.')
+    }
+  }
+
   const handleCancelOrder = async (order) => {
     const reason = window.prompt(
       'Motivo de anulación del pedido:'
@@ -492,15 +589,37 @@ const handleRegisterBalancePayment = async (order) => {
   }
 
   const handleDeleteOrder = async (order) => {
+    const willRestock =
+      (order.garmentSource === 'inventory' || !order.garmentSource) &&
+      order.productId &&
+      Number(order.quantity) > 0
+
     const confirmed = window.confirm(
       `Esto va a ELIMINAR PERMANENTEMENTE el pedido de "${
         order.customerName || 'sin nombre'
-      }". No se puede deshacer. ¿Continuar?`
+      }".` +
+      (willRestock
+        ? ` Se devolverán ${order.quantity} unidad(es) al inventario del producto.`
+        : '') +
+      ' No se puede deshacer. ¿Continuar?'
     )
 
     if (!confirmed) return
 
     try {
+      if (willRestock) {
+        const productRef = doc(db, 'products', order.productId)
+        const productSnap = await getDoc(productRef)
+
+        if (productSnap.exists()) {
+          const currentStock = Number(productSnap.data().stock || 0)
+
+          await updateDoc(productRef, {
+            stock: currentStock + Number(order.quantity)
+          })
+        }
+      }
+
       await deleteDoc(doc(db, 'orders', order.id))
 
       setOrders((prev) =>
@@ -571,6 +690,16 @@ ${order.previewImage || 'No disponible'}
       }
     }
 
+    const addDivider = () => {
+      if (y + 4 > docPDF.internal.pageSize.getHeight() - 20) {
+        docPDF.addPage()
+        y = 20
+      }
+      docPDF.setDrawColor(220, 220, 220)
+      docPDF.line(20, y, 190, y)
+      y += 6
+    }
+
     // ENCABEZADO
     addText('Pedido personalizado', {
       fontSize: 18,
@@ -605,60 +734,88 @@ ${order.previewImage || 'No disponible'}
       `Técnica: ${order.technique || 'No definida'}`
     )
 
-    y += 4
+    y += 2
+    addDivider()
 
     // COTIZACIÓN
-    addText('Cotización:', {
-      fontSize: 13,
-      spacing: 7
+    addText('Cotización', {
+      fontSize: 14,
+      spacing: 8
     })
 
+    y += 1
+
     addText(
-      `Precio base: Q${Number(
+      `Precio base de la prenda ......... Q${Number(
         order.unitBasePrice || 0
       ).toFixed(2)}`
     )
 
     if (order.personalizationSizeBack) {
       addText(
-        `Recargo frente (${
+        `Recargo personalización - frente (${
           order.personalizationSize || 'chico'
-        }) + espalda (${
+        }) ... Q${Number(
+          order.personalizationSurchargeFront ??
+            order.personalizationSurcharge ??
+            0
+        ).toFixed(2)}`
+      )
+
+      addText(
+        `Recargo personalización - espalda (${
           order.personalizationSizeBack
-        }): Q${Number(
-          order.personalizationSurcharge || 0
+        }) ... Q${Number(
+          order.personalizationSurchargeBack || 0
         ).toFixed(2)}`
       )
     } else {
       addText(
         `Recargo personalización (${
           order.personalizationSize || 'chico'
-        }): Q${Number(
+        }) ......... Q${Number(
           order.personalizationSurcharge || 0
         ).toFixed(2)}`
       )
     }
 
+    y += 1
+
     addText(
       `Precio unitario: Q${Number(
         order.quotedUnitPrice || 0
-      ).toFixed(2)}  ·  Cantidad: ${
+      ).toFixed(2)}   x   Cantidad: ${
         order.quantity || 0
-      }  ·  Total: Q${Number(
-        order.quoteTotal || 0
-      ).toFixed(2)}`
+      }`
     )
 
-    addText(`Forma de pago: ${order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%'}`)
+    addText(
+      `TOTAL COTIZADO: Q${Number(
+        order.quoteTotal || 0
+      ).toFixed(2)}`,
+      { fontSize: 13 }
+    )
+
+    y += 2
+    addDivider()
+
+    addText('Forma de pago', {
+      fontSize: 13,
+      spacing: 7
+    })
+
+    addText(`Plan: ${order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%'}`)
     addText(`Anticipo / pago inicial: Q${payment.initial.toFixed(2)}`)
     addText(`Pago final: Q${payment.final.toFixed(2)}`)
-    addText(`Total pagado: Q${payment.paid.toFixed(2)} · Saldo pendiente: Q${payment.balance.toFixed(2)}`)
+    addText(`Total pagado: Q${payment.paid.toFixed(2)}`)
+    addText(`Saldo pendiente: Q${payment.balance.toFixed(2)}`)
     addText(`Situación de pago: ${payment.label}`)
 
-    y += 4
+    y += 2
+    addDivider()
 
     addText(
-      `Estado: ${order.status || 'pendiente_aprobacion'}`
+      `Estado del pedido: ${order.status || 'pendiente_aprobacion'}`
     )
 
     y += 6
@@ -778,13 +935,34 @@ ${order.previewImage || 'No disponible'}
       statusFilter === '' ||
       order.status === statusFilter
 
-    return matchesSearch && matchesStatus
+    const orderDate = localDateValue(
+      order.orderDate || order.createdAt
+    )
+
+    const matchesDate =
+      !dateFilter || orderDate === dateFilter
+
+    return matchesSearch && matchesStatus && matchesDate
   })
 
   return (
     <div className="container mt-4 orders-history-compact">
       <style>{historyCompactStyles}</style>
-      <h2>Historial de pedidos</h2>
+
+      <div className="history-header">
+        <h2 className="mb-0">Historial de pedidos</h2>
+
+        <div className="history-date-filter">
+          <label htmlFor="historyDateFilter">
+          </label>
+          <input
+            id="historyDateFilter"
+            type="date"
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value)}
+          />
+        </div>
+      </div>
 
       {orders.length === 0 && (
         <p className="text-muted">
@@ -793,7 +971,7 @@ ${order.previewImage || 'No disponible'}
       )}
 
       <div className="card p-3 mb-3">
-        <div className="row">
+        <div className="row g-2">
           <div className="col-md-6">
             <input
               type="text"
@@ -804,6 +982,7 @@ ${order.previewImage || 'No disponible'}
                 setSearch(event.target.value)
               }
             />
+
           </div>
 
           <div className="col-md-6">
@@ -822,6 +1001,9 @@ ${order.previewImage || 'No disponible'}
               <option value="en_produccion">
                 Producción
               </option>
+              <option value="en_arreglo">
+                En arreglo / devolución
+              </option>
               <option value="terminado">Terminado</option>
               <option value="entregado">Entregado</option>
               <option value="anulado">Anulado</option>
@@ -832,6 +1014,7 @@ ${order.previewImage || 'No disponible'}
 
       {filteredOrders.map((order) => {
         const isCancelled = order.status === 'anulado'
+        const isDelivered = order.status === 'entregado'
         const payment = getPaymentSummary(order)
 
         return (
@@ -909,7 +1092,7 @@ ${order.previewImage || 'No disponible'}
                         {payment.label}
                       </span>
                     </div>
-                    <div className="d-flex flex-wrap gap-3 small">
+                    <div className="d-flex flex-wrap gap-3 small mb-2">
                       <span><strong>Anticipo / pago inicial:</strong> Q{payment.initial.toFixed(2)}</span>
                       <span><strong>Pago final:</strong> Q{payment.final.toFixed(2)}</span>
                       <span><strong>Total pagado:</strong> Q{payment.paid.toFixed(2)}</span>
@@ -917,6 +1100,24 @@ ${order.previewImage || 'No disponible'}
                         <strong>Saldo pendiente: Q{payment.balance.toFixed(2)}</strong>
                       </span>
                     </div>
+
+                    {!isCancelled && !isDelivered && (
+                      <div className="d-flex align-items-center gap-2">
+                        <label className="small mb-0">
+                          <strong>Forma de pago:</strong>
+                        </label>
+                        <select
+                          className="form-select form-select-sm history-payment-plan-select"
+                          value={order.paymentPlan || 'anticipo_50'}
+                          onChange={(event) =>
+                            handleChangePaymentPlan(order, event.target.value)
+                          }
+                        >
+                          <option value="anticipo_50">Anticipo 50%</option>
+                          <option value="completo">Pago completo</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
 
 
@@ -930,7 +1131,9 @@ ${order.previewImage || 'No disponible'}
                             ? 'bg-success'
                             : order.status === 'en_produccion'
                               ? 'bg-primary'
-                              : 'bg-warning text-dark'
+                              : order.status === 'en_arreglo'
+                                ? 'bg-info text-dark'
+                                : 'bg-warning text-dark'
                       }`}
                     >
                       {order.status || 'pendiente_aprobacion'}
@@ -970,6 +1173,9 @@ ${order.previewImage || 'No disponible'}
                       </option>
                       <option value="en_produccion">
                         En producción
+                      </option>
+                      <option value="en_arreglo">
+                        En arreglo / devolución
                       </option>
                       <option value="terminado">
                         Terminado
@@ -1035,7 +1241,7 @@ ${order.previewImage || 'No disponible'}
                     </button>
 
                     {payment.balance > 0 &&
-                      ['aprobado', 'en_produccion', 'terminado'].includes(order.status) && (
+                      ['aprobado', 'en_produccion', 'en_arreglo', 'terminado'].includes(order.status) && (
                       <button
                         className="btn btn-dark"
                         onClick={() =>

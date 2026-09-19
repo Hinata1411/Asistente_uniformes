@@ -1266,7 +1266,7 @@ ${order.previewImage || 'No disponible'}
                         handleDownloadOrderPDF(order)
                       }
                     >
-                      Descargar pedido PDF
+                      Descargar cotización
                     </button>
 
                     <a
@@ -1297,7 +1297,7 @@ ${order.previewImage || 'No disponible'}
                       }
                       disabled={isCancelled}
                     >
-                      Editar datos
+                      Editar
                     </button>
 
                     <button
@@ -1310,17 +1310,7 @@ ${order.previewImage || 'No disponible'}
                       Anular
                     </button>
 
-                    {payment.balance > 0 &&
-                      ['aprobado', 'en_produccion', 'en_arreglo', 'terminado'].includes(order.status) && (
-                      <button
-                        className="btn btn-dark"
-                        onClick={() =>
-                          handleRegisterBalancePayment(order)
-                        }
-                      >
-                        Registrar saldo y entregar
-                      </button>
-                    )}
+                    
 
                     {isAdmin && (
                       <button
@@ -1329,7 +1319,7 @@ ${order.previewImage || 'No disponible'}
                           handleDeleteOrder(order)
                         }
                       >
-                        Eliminar pedido
+                        Eliminar
                       </button>
                     )}
                   </div>

@@ -1174,7 +1174,7 @@ function CreateOrderPage() {
 
       const response =
         await fetch(
-          'http://localhost:3001/api/ai/recommendation',
+          `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/ai/recommendation`,
           {
             method: 'POST',
 

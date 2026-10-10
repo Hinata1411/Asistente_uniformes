@@ -1,0 +1,41 @@
+rules_version = '2';
+// Reglas de seguridad de Cloud Firestore — Asistente de personalización de uniformes.
+// Principio: denegar por defecto y permitir solo a usuarios internos activos según su rol.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isStaff() { return signedIn() && profile().role in ['admin', 'empleado'] && profile().get('active', true) == true; }
+    function isAdmin() { return isStaff() && profile().role == 'admin'; }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Un usuario puede editar su perfil, pero nunca su propio rol.
+      allow update: if signedIn() && request.auth.uid == uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active']);
+      allow create, delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isStaff();
+      // El empleado solo puede descontar o devolver stock al registrar pedidos.
+      allow update: if isAdmin() || (isStaff()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+                    && request.resource.data.stock is int && request.resource.data.stock >= 0);
+      allow create, delete: if isAdmin();
+    }
+
+    match /pricingRules/{technique} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff()
+        && request.resource.data.quantity is int && request.resource.data.quantity > 0;
+      // La anulación o eliminación de pedidos es exclusiva del administrador.
+      allow delete: if isAdmin();
+    }
+  }
+}

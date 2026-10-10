@@ -125,9 +125,12 @@ export const validateBasicRules = ({
     isTechniqueRecommended = false
   }
 
+  const numericQuantity = Number(quantity)
+
+  // Corrección PU-10: rechazar valores no numéricos (NaN) además de cero o negativos.
   if (
-    !quantity ||
-    Number(quantity) <= 0
+    !Number.isFinite(numericQuantity) ||
+    numericQuantity <= 0
   ) {
     warnings.push(
       'La cantidad debe ser mayor a 0.'
@@ -275,11 +278,9 @@ export const completeAIResult = (
       fallback.productColor || ''
     ).toLowerCase()
 
+    // Corrección PU-15: reconocer género y variantes (negro/negra, oscuro/oscura, marino).
     const isDarkGarment =
-      baseColor.includes('negro') ||
-      baseColor.includes('oscuro') ||
-      baseColor.includes('azul marino') ||
-      baseColor.includes('gris oscuro')
+      /negr[oa]|oscur[oa]|marino|carb[oó]n/.test(baseColor)
 
     if (isDarkGarment) {
       completed.riskLevel = 'alto'

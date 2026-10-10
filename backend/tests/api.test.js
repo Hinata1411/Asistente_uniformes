@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 // Pruebas del endpoint con una API key ficticia: solo se prueban los caminos
 // que el servidor resuelve sin consultar a Groq (validaciones de entrada).
 const PORT = 3999
-const ENDPOINT = `http://127.0.0.1:${PORT}/api/ai/recommendation`
+const ENDPOINT = `http://localhost:${PORT}/api/ai/recommendation`
 let srv
 beforeAll(async () => {
-  srv = spawn('node', ['server.js'], { cwd: new URL('..', import.meta.url).pathname, env: { ...process.env, GROQ_API_KEY: 'clave-de-prueba', PORT: String(PORT) } })
+  srv = spawn(process.execPath, ['server.js'], { cwd: fileURLToPath(new URL('..', import.meta.url)), env: { ...process.env, GROQ_API_KEY: 'clave-de-prueba', PORT: String(PORT) } })
   await new Promise((ok) => srv.stdout.on('data', (d) => String(d).includes('Servidor') && ok()))
 })
 afterAll(() => srv.kill())

@@ -13,12 +13,16 @@ dotenv.config()
 
 const app = express()
 
+// Corrección PU-37: no revelar la tecnología del servidor.
+app.disable('x-powered-by')
+
 app.use(
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173'
-    ],
+    // Orígenes permitidos configurables para el despliegue (ALLOWED_ORIGINS separados por coma).
+    origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type']
   })

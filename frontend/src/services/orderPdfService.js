@@ -491,6 +491,7 @@ export async function generateOrderPdf(order) {
 
   // =========================
   // PIE DE PÁGINA (todas las páginas)
+  // OTRO COMENTARIO
   // =========================
 
   const totalPages = docPDF.internal.getNumberOfPages()

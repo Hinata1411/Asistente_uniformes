@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import Groq from 'groq-sdk'
+import { requireFirebaseUser } from './firebaseAuth.js'
 
 import {
   validateBasicRules,
@@ -24,11 +25,11 @@ app.use(
       .map((origin) => origin.trim())
       .filter(Boolean),
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
+    allowedHeaders: ['Content-Type', 'Authorization']
   })
 )
 
-app.use(express.json({ limit: '20mb' }))
+app.use(express.json({ limit: '8mb' }))
 
 if (!process.env.GROQ_API_KEY) {
   console.error('Falta GROQ_API_KEY en el archivo .env')
@@ -40,6 +41,37 @@ const groq = new Groq({
 })
 
 const AI_MODEL = 'qwen/qwen3.8-27b'
+const aiRequestWindows = new Map()
+
+function limitAIRequests(req, res, next) {
+  const now = Date.now()
+  const windowMs = 15 * 60 * 1000
+  const maxRequests = 30
+  const userId = req.firebaseUser.uid
+  const current = aiRequestWindows.get(userId)
+  const window = !current || now - current.startedAt >= windowMs
+    ? { startedAt: now, count: 0 }
+    : current
+
+  if (window.count >= maxRequests) {
+    return res.status(429).json({
+      error: 'Límite de solicitudes alcanzado.',
+      message: 'Espera unos minutos antes de volver a usar la validación inteligente.'
+    })
+  }
+
+  window.count += 1
+  aiRequestWindows.set(userId, window)
+
+  // Evitar que la tabla crezca indefinidamente en el proceso del servidor.
+  if (aiRequestWindows.size > 1000) {
+    for (const [key, value] of aiRequestWindows) {
+      if (now - value.startedAt >= windowMs) aiRequestWindows.delete(key)
+    }
+  }
+
+  next()
+}
 
 /* =========================================================
    UTILIDADES
@@ -80,7 +112,7 @@ const cleanAIText = (text) => {
    ENDPOINT IA
 ========================================================= */
 
-app.post('/api/ai/recommendation', async (req, res) => {
+app.post('/api/ai/recommendation', requireFirebaseUser, limitAIRequests, async (req, res) => {
   try {
     if (
       !req.body ||
@@ -106,6 +138,18 @@ app.post('/api/ai/recommendation', async (req, res) => {
       previewImage,
       elements = []
     } = req.body
+
+    if (
+      (typeof previewImage === 'string' && previewImage.length > 7_000_000) ||
+      (Array.isArray(elements) && elements.length > 50) ||
+      [product, productType, productColor, size, technique, customerGarmentDescription]
+        .some((value) => typeof value === 'string' && value.length > 300)
+    ) {
+      return res.status(413).json({
+        error: 'Solicitud demasiado grande',
+        message: 'Reduce el tamaño de la imagen o la cantidad de elementos del diseño.'
+      })
+    }
 
     /* =====================================================
        VALIDACIÓN INICIAL

@@ -14,6 +14,37 @@
   margin-bottom: 0;
 }
 
+.dashboard-summary-filter {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid #e7e3d5;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.dashboard-summary-filter strong {
+  margin-right: auto;
+}
+
+.dashboard-summary-filter label {
+  display: grid;
+  gap: 4px;
+  color: #57534e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dashboard-summary-filter input {
+  min-height: 36px;
+  padding: 5px 9px;
+  border: 1px solid #d6d3d1;
+  border-radius: 7px;
+}
+
 /* =========================
    INDICADORES ECONÓMICOS
 ========================= */
@@ -408,7 +439,7 @@
 }
 
 .calendar-legend-dot-orders {
-  background: var(--brand-gold, #ffc603);
+  background: #e9d88e;
 }
 
 .calendar-legend-dot-delivery {
@@ -470,8 +501,8 @@
 }
 
 .calendar-day.has-data {
-  background: #fff;
-  border-color: var(--brand-gold, #ffc603);
+  background: #fffdf5;
+  border-color: #e8dba9;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
@@ -483,8 +514,8 @@
 }
 
 .calendar-day.is-today {
-  border-color: var(--brand-black, #000);
-  background: var(--brand-gold, #ffc603);
+  border-color: #bca64b;
+  background: #f6edc9;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
 }
 
@@ -524,7 +555,7 @@
 }
 
 .calendar-marker-orders {
-  background: var(--brand-gold, #ffc603);
+  background: #e9d88e;
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 

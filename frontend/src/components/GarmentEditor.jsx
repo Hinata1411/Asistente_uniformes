@@ -340,6 +340,7 @@ function TextElement({
 const GarmentEditor = forwardRef(function GarmentEditor({
   product,
   customerGarmentImage,
+  customerGarmentImages,
   customerGarment,
   customizationSide,
   initialElements,
@@ -356,11 +357,13 @@ const GarmentEditor = forwardRef(function GarmentEditor({
 
   const baseFrontImage =
     product?.images?.frente ||
+    customerGarmentImages?.front ||
     customerGarmentImage ||
     ''
 
   const baseBackImage =
     product?.images?.espalda ||
+    customerGarmentImages?.back ||
     customerGarmentImage ||
     ''
 
@@ -377,6 +380,8 @@ const GarmentEditor = forwardRef(function GarmentEditor({
   const hasGarment =
     Boolean(
       product ||
+      customerGarmentImages?.front ||
+      customerGarmentImages?.back ||
       customerGarmentImage
     )
 
@@ -478,6 +483,14 @@ const GarmentEditor = forwardRef(function GarmentEditor({
         ...changes
       })
     }
+
+  const resizeSelectedImage = (factor) => {
+    if (selectedElement?.type !== 'image') return
+    updateSelectedElement({
+      width: Math.max(30, Math.min(420, selectedElement.width * factor)),
+      height: Math.max(30, Math.min(520, selectedElement.height * factor))
+    })
+  }
 
   /* =======================================================
      AGREGAR IMAGEN
@@ -937,6 +950,7 @@ const GarmentEditor = forwardRef(function GarmentEditor({
   }, [
     product,
     customerGarmentImage,
+    customerGarmentImages,
     customizationSide,
     elements,
     frontImage,
@@ -1352,10 +1366,15 @@ const GarmentEditor = forwardRef(function GarmentEditor({
                   Imagen seleccionada
                 </h6>
 
-                <p className="mb-0 text-muted">
-                  Puedes moverla, cambiar su tamaño desde las esquinas
-                  o eliminarla.
-                </p>
+                <div className="d-flex gap-2 align-items-center flex-wrap">
+                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => resizeSelectedImage(0.9)}>
+                    Reducir 10%
+                  </button>
+                  <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => resizeSelectedImage(1.1)}>
+                    Aumentar 10%
+                  </button>
+                  <span className="small text-muted">Tamaño actual: {Math.round(selectedElement.width)} × {Math.round(selectedElement.height)} px. También puedes usar las esquinas.</span>
+                </div>
 
               </div>
             )}

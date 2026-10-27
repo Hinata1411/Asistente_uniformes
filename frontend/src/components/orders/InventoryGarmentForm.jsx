@@ -7,25 +7,6 @@ function InventoryGarmentForm({
   setPreviewBase64,
   setEditorElements
 }) {
-  console.log(
-  'PRODUCTO RECIBIDO EN InventoryGarmentForm:',
-  selectedProduct
-)
-
-console.log(
-  'TALLAS RECIBIDAS:',
-  selectedProduct?.sizes
-)
-
-console.log(
-  'TECNICAS RECIBIDAS:',
-  selectedProduct?.allowedTechniques
-)
-
-console.log(
-  'AREAS RECIBIDAS:',
-  selectedProduct?.availableSides
-)
   const sizes = Array.isArray(selectedProduct?.sizes)
     ? selectedProduct.sizes
     : []
@@ -95,6 +76,8 @@ console.log(
                 ? product.sizes
                 : []
 
+              const needsSizeSplit = Boolean(product.legacyMultiSize)
+
               const stockLabel =
                 Number(product.stock || 0) <= 0
                   ? 'Agotado'
@@ -104,11 +87,14 @@ console.log(
                 <option
                   key={product.id}
                   value={product.id}
+                  disabled={needsSizeSplit}
                 >
                   {[
                     product.name || 'Producto sin nombre',
                     product.color || 'sin color',
-                    productSizes[0]
+                    needsSizeSplit
+                      ? 'requiere separar tallas'
+                      : productSizes[0]
                       ? `Talla ${productSizes[0]}`
                       : 'sin talla',
                     stockLabel
@@ -117,6 +103,11 @@ console.log(
               )
             })}
           </select>
+          {inventoryProducts.some((product) => product.legacyMultiSize) && (
+            <div className="form-text text-warning">
+              Los productos antiguos con varias tallas requieren separarse en productos individuales antes de registrar nuevos pedidos.
+            </div>
+          )}
         </div>
 
         {/* TALLA */}

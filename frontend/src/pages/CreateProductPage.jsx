@@ -47,7 +47,8 @@ function CreateProductPage() {
     color: '',
     stock: 0,
     price: 0,
-    sizes: [],
+    size: '',
+    legacyMultiSize: false,
     availableSides: [],
     allowedTechniques: []
   })
@@ -82,12 +83,7 @@ function CreateProductPage() {
     setLoadingProduct
   ] = useState(isEditing)
 
-  const sizeOptions = [
-    'S',
-    'M',
-    'L',
-    'XL'
-  ]
+  const sizeOptions = ['2', '4', '6', '7', '10', '12', '14', '16', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL']
 
   const sideOptions = [
     {
@@ -174,12 +170,11 @@ function CreateProductPage() {
               productData.price || 0
             ),
 
-          sizes:
-            Array.isArray(
-              productData.sizes
-            )
-              ? productData.sizes
-              : [],
+          size:
+            productData.size || productData.sizes?.[0] || '',
+
+          legacyMultiSize:
+            !productData.size && Array.isArray(productData.sizes) && productData.sizes.length > 1,
 
           availableSides:
             Array.isArray(
@@ -405,6 +400,11 @@ function CreateProductPage() {
   ) => {
     e.preventDefault()
 
+    if (isEditing && form.legacyMultiSize) {
+      notify('Este producto antiguo tiene stock compartido entre varias tallas. Crea un producto nuevo por talla con el stock real y luego desactiva este registro.', 'warning')
+      return
+    }
+
     if (
       !form.name ||
       !form.type ||
@@ -412,7 +412,7 @@ function CreateProductPage() {
       form.stock < 0 ||
       !form.price ||
       Number(form.price) <= 0 ||
-      form.sizes.length === 0 ||
+      !form.size ||
       form.availableSides.length === 0 ||
       form.allowedTechniques.length === 0
     ) {
@@ -485,8 +485,8 @@ function CreateProductPage() {
             form.price
           ),
 
-        sizes:
-          form.sizes,
+        size:
+          form.size,
 
         availableSides:
           form.availableSides,
@@ -769,7 +769,7 @@ function CreateProductPage() {
 
           <div className="col-12 col-md-8">
             <label className="form-label">
-              Tallas disponibles
+              Talla de este producto
             </label>
 
             <div className="option-group">
@@ -782,18 +782,10 @@ function CreateProductPage() {
                     className="option-check"
                   >
                     <input
-                      type="checkbox"
-                      checked={
-                        form.sizes.includes(
-                          size
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'sizes',
-                          size
-                        )
-                      }
+                      type="radio"
+                      name="product-size"
+                      checked={form.size === size}
+                      onChange={() => setForm({ ...form, size })}
                     />
 
                     <span>

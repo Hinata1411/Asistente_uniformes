@@ -121,10 +121,8 @@ function OrdersHistoryPage() {
   const [orders, setOrders] = useState([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  // Por defecto el filtro arranca en la fecha de hoy.
-  const [dateFilter, setDateFilter] = useState(() =>
-    localDateValue(new Date())
-  )
+  // Mostrar todo el historial hasta que el usuario elija una fecha.
+  const [dateFilter, setDateFilter] = useState('')
 
   const navigate = useNavigate()
 
@@ -570,12 +568,18 @@ ${order.previewImage || 'No disponible'}
         <h2 className="page-title">Historial de pedidos</h2>
 
         <div className="history-date-filter">
+          <label htmlFor="historyDateFilter">Filtrar por fecha</label>
           <input
             id="historyDateFilter"
             type="date"
             value={dateFilter}
             onChange={(event) => setDateFilter(event.target.value)}
           />
+          {dateFilter && (
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setDateFilter('')}>
+              Ver todos
+            </button>
+          )}
         </div>
       </div>
 

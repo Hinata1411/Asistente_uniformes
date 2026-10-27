@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import useInventoryProducts from '../hooks/orders/useInventoryProducts'
-import { getPersonalizationPricing } from '../services/pricingService'
 
-import { db, storage } from '../firebase/config'
+import { auth, db, storage } from '../firebase/config'
+import { getIdToken } from 'firebase/auth'
 
 import {
   collection,
@@ -47,6 +47,9 @@ const localDateValue = (value) => {
   } catch { return '' }
 }
 
+const isValidMoneyInput = (value) =>
+  value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0
+
 function CreateOrderPage() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -71,7 +74,8 @@ function CreateOrderPage() {
     después de generarla.
   */
   const lastNotifiedElementsRef = useRef([])
-  const [customerGarmentImage, setCustomerGarmentImage] = useState('')
+  const [customerGarmentImages, setCustomerGarmentImages] = useState({ front: '', back: '' })
+  const customerGarmentImage = customerGarmentImages.front || customerGarmentImages.back
   const {
     inventoryProducts,
     loadingProducts,
@@ -99,30 +103,14 @@ function CreateOrderPage() {
     technique: '',
     customizationSide: '',
 
-    personalizationSize: 'chico',
-    personalizationSizeBack: 'chico',
+    personalizationSize: '',
+    personalizationSizeBack: '',
+    personalizationSurchargeFrontInput: '',
+    personalizationSurchargeBackInput: '',
     paymentPlan: 'anticipo_50'
   }
 
   const [form, setForm] = useState(initialForm)
-
-  const [personalizationPricing, setPersonalizationPricing] = useState({})
-
-  useEffect(() => {
-    const loadPricing = async () => {
-      try {
-        const pricing = await getPersonalizationPricing()
-        setPersonalizationPricing(pricing)
-      } catch (error) {
-        console.error(
-          'Error cargando precios de personalización:',
-          error
-        )
-      }
-    }
-
-    loadPricing()
-  }, [])
 
   const selectedProduct = inventoryProducts.find(
     (item) => item.id === form.productId
@@ -140,39 +128,33 @@ function CreateOrderPage() {
 
   const quantityForQuote = Number(form.quantity) || 0
 
-  /*
-    Si el cliente trae su propia prenda, el negocio no la vende:
-    solo cobra la personalización. El precio base solo aplica
-    a prendas de inventario.
-  */
+  // Para una prenda del cliente también se registra el monto base
+  // acordado; el recargo de personalización se agrega por unidad.
   const unitBasePrice = isInventoryGarment
     ? Number(selectedProduct?.price || 0)
-    : 0
-
-  const techniquePricing =
-    personalizationPricing[form.technique]
+    : Number(form.customerGarmentPrice || 0)
 
   const isBothSides =
     form.customizationSide === 'ambos'
 
-  const personalizationSurchargeFront = techniquePricing
-    ? Number(
-        techniquePricing[form.personalizationSize] || 0
-      )
-    : 0
+  const hasRequiredCustomerGarmentImages =
+    form.customizationSide === 'ambos'
+      ? Boolean(customerGarmentImages.front && customerGarmentImages.back)
+      : form.customizationSide === 'espalda'
+        ? Boolean(customerGarmentImages.back)
+        : Boolean(customerGarmentImages.front)
 
-  const personalizationSurchargeBack =
-    isBothSides && techniquePricing
-      ? Number(
-          techniquePricing[form.personalizationSizeBack] || 0
-        )
-      : 0
+  const personalizationSurchargeFront = Math.max(
+    0,
+    Number(form.personalizationSurchargeFrontInput || 0)
+  )
+
+  const personalizationSurchargeBack = isBothSides
+    ? Math.max(0, Number(form.personalizationSurchargeBackInput || 0))
+    : 0
 
   const personalizationSurcharge =
     personalizationSurchargeFront + personalizationSurchargeBack
-
-  const missingPricingRule =
-    Boolean(form.technique) && !techniquePricing
 
   const unitPrice = unitBasePrice + personalizationSurcharge
 
@@ -216,7 +198,7 @@ function CreateOrderPage() {
 
         customerGarmentPrice:
           order.garmentSource === 'customer' &&
-          order.unitBasePrice
+          order.unitBasePrice != null
             ? String(order.unitBasePrice)
             : '',
 
@@ -233,13 +215,24 @@ function CreateOrderPage() {
           order.customizationSide || '',
 
         personalizationSize:
-          order.personalizationSize || 'chico',
+          order.personalizationSize || '',
 
         personalizationSizeBack:
-          order.personalizationSizeBack || 'chico',
+          order.personalizationSizeBack || '',
+
+        personalizationSurchargeFrontInput:
+          String(order.personalizationSurchargeFront ?? order.personalizationSurcharge ?? ''),
+
+        personalizationSurchargeBackInput:
+          String(order.personalizationSurchargeBack ?? ''),
 
         paymentPlan:
           order.paymentPlan || 'anticipo_50'
+      })
+
+      setCustomerGarmentImages({
+        front: order.customerGarment?.images?.front || order.customerGarmentImage || '',
+        back: order.customerGarment?.images?.back || order.customerGarmentImage || ''
       })
 
       setEditingOrder(order)
@@ -262,8 +255,18 @@ function CreateOrderPage() {
     setPreviewBase64('')
     setEditorElements([])
     lastNotifiedElementsRef.current = []
-    setCustomerGarmentImage('')
+    setCustomerGarmentImages({ front: '', back: '' })
     setEditingOrder(null)
+  }
+
+  const persistCustomerGarmentImage = async (image, side) => {
+    if (!image) return ''
+    if (!image.startsWith('data:')) return image
+
+    const path = `customer-garments/${crypto.randomUUID()}-${side}.png`
+    const imageRef = ref(storage, path)
+    await uploadString(imageRef, image, 'data_url')
+    return getDownloadURL(imageRef)
   }
 
   const handleSaveOrder = async (order) => {
@@ -347,7 +350,7 @@ function CreateOrderPage() {
       (
         !form.customerGarmentType ||
         !form.customerGarmentColor ||
-        !customerGarmentImage
+        !hasRequiredCustomerGarmentImages
       )
     ) {
       notify(
@@ -357,11 +360,7 @@ function CreateOrderPage() {
       return
     }
 
-    /*
-      El precio base solo es obligatorio cuando la prenda es del
-      inventario (es lo que el negocio vende). Si el cliente trae
-      su propia prenda, el precio base es 0 y no se pide.
-    */
+    /* El precio unitario de la prenda del cliente también forma parte de la cotización. */
     if (
       isInventoryGarment &&
       unitBasePrice <= 0
@@ -373,11 +372,16 @@ function CreateOrderPage() {
       return
     }
 
-    if (missingPricingRule) {
-      notify(
-        `No hay precios de personalización configurados para la técnica "${form.technique}". Revisa la colección pricingRules en Firestore.`,
-        'error'
-      )
+    if (
+      isCustomerGarment &&
+      !isValidMoneyInput(form.customerGarmentPrice)
+    ) {
+      notify('Ingresa un monto válido para la prenda proporcionada por el cliente (puede ser Q0.00).', 'warning')
+      return
+    }
+
+    if (!form.personalizationSize.trim() || !isValidMoneyInput(form.personalizationSurchargeFrontInput) || (isBothSides && (!form.personalizationSizeBack.trim() || !isValidMoneyInput(form.personalizationSurchargeBackInput)))) {
+      notify('Ingresa el tamaño y recargo de personalización para cada lado usado.', 'warning')
       return
     }
 
@@ -433,6 +437,13 @@ function CreateOrderPage() {
       editorElements ||
       []
 
+    const savedCustomerGarmentImages = isCustomerGarment
+      ? {
+          front: await persistCustomerGarmentImage(customerGarmentImages.front, 'front'),
+          back: await persistCustomerGarmentImage(customerGarmentImages.back, 'back')
+        }
+      : null
+
     // =========================================
     // DATOS DE LA PRENDA
     // =========================================
@@ -472,7 +483,10 @@ function CreateOrderPage() {
                 form.customerGarmentDescription,
 
               color:
-                form.customerGarmentColor
+                form.customerGarmentColor,
+
+              images:
+                savedCustomerGarmentImages
             }
           : null
     }
@@ -1140,13 +1154,23 @@ function CreateOrderPage() {
         (
           !form.customerGarmentType ||
           !form.customerGarmentColor ||
-          !customerGarmentImage
+          !hasRequiredCustomerGarmentImages
         )
       ) {
         notify(
           'Completa los datos de la prenda del cliente y carga una fotografía',
           'warning'
         )
+        return
+      }
+
+      if (isCustomerGarment && !isValidMoneyInput(form.customerGarmentPrice)) {
+        notify('Ingresa un monto válido para la prenda proporcionada por el cliente.', 'warning')
+        return
+      }
+
+      if (!form.personalizationSize.trim() || !isValidMoneyInput(form.personalizationSurchargeFrontInput) || (isBothSides && (!form.personalizationSizeBack.trim() || !isValidMoneyInput(form.personalizationSurchargeBackInput)))) {
+        notify('Ingresa el tamaño y recargo de personalización para cada lado usado.', 'warning')
         return
       }
 
@@ -1172,15 +1196,28 @@ function CreateOrderPage() {
       setLoadingAI(true)
       setAiResult(null)
 
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        notify('Tu sesión venció. Inicia sesión nuevamente.', 'warning')
+        return
+      }
+      const idToken = await getIdToken(currentUser)
+      const apiBaseUrl = import.meta.env.VITE_API_URL ||
+        (import.meta.env.DEV ? 'http://localhost:3001' : '')
+
+      if (!apiBaseUrl) {
+        throw new Error('Falta configurar VITE_API_URL con la dirección del servidor Render.')
+      }
+
       const response =
         await fetch(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/ai/recommendation`,
+          `${apiBaseUrl.replace(/\/$/, '')}/api/ai/recommendation`,
           {
             method: 'POST',
 
             headers: {
-              'Content-Type':
-                'application/json'
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`
             },
 
             body:
@@ -1545,9 +1582,11 @@ function CreateOrderPage() {
         )}
 
         {isCustomerGarment && (
-          <p className="quote-hint">
-            El cliente trae su propia prenda: solo se cobra la personalización (no hay precio base de la prenda).
-          </p>
+          <div className="col-12 col-md-6 mb-3">
+            <label className="form-label" htmlFor="customerGarmentPrice">Precio por prenda del cliente (Q)</label>
+            <input id="customerGarmentPrice" type="number" className="form-control" min="0" step="0.01" value={form.customerGarmentPrice} onChange={(event) => setForm({ ...form, customerGarmentPrice: event.target.value })} placeholder="Ingresa el monto por prenda (puede ser 0)" required />
+            <div className="form-text">Este monto se multiplicará por la cantidad y se incluirá en el resumen de ingresos.</div>
+          </div>
         )}
 
         <div className="row g-3 mb-2">
@@ -1558,20 +1597,14 @@ function CreateOrderPage() {
                 : 'Tamaño de la personalización'}
             </label>
 
-            <select
-              className="form-select"
+            <input
+              type="text"
+              className="form-control"
               value={form.personalizationSize}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  personalizationSize: e.target.value
-                })
-              }
-            >
-              <option value="chico">Chico (8x10")</option>
-              <option value="mediano">Mediano (16x20")</option>
-              <option value="grande">Grande (30x23")</option>
-            </select>
+              onChange={(event) => setForm({ ...form, personalizationSize: event.target.value })}
+              placeholder="Ej. 20 x 25 cm"
+              required
+            />
           </div>
 
           {isBothSides && (
@@ -1580,20 +1613,44 @@ function CreateOrderPage() {
                 Tamaño del diseño (espalda)
               </label>
 
-              <select
-                className="form-select"
+              <input
+                type="text"
+                className="form-control"
                 value={form.personalizationSizeBack}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    personalizationSizeBack: e.target.value
-                  })
-                }
-              >
-                <option value="chico">Chico (8x10")</option>
-                <option value="mediano">Mediano (16x20")</option>
-                <option value="grande">Grande (30x23")</option>
-              </select>
+                onChange={(event) => setForm({ ...form, personalizationSizeBack: event.target.value })}
+                placeholder="Ej. 25 x 30 cm"
+                required
+              />
+            </div>
+          )}
+
+          <div className="col-12 col-md-4">
+            <label className="form-label">Recargo frente por prenda (Q)</label>
+            <input
+              type="number"
+              className="form-control"
+              min="0"
+              step="0.01"
+              value={form.personalizationSurchargeFrontInput}
+              onChange={(event) => setForm({ ...form, personalizationSurchargeFrontInput: event.target.value })}
+              placeholder="0.00"
+              required
+            />
+          </div>
+
+          {isBothSides && (
+            <div className="col-12 col-md-4">
+              <label className="form-label">Recargo espalda por prenda (Q)</label>
+              <input
+                type="number"
+                className="form-control"
+                min="0"
+                step="0.01"
+                value={form.personalizationSurchargeBackInput}
+                onChange={(event) => setForm({ ...form, personalizationSurchargeBackInput: event.target.value })}
+                placeholder="0.00"
+                required
+              />
             </div>
           )}
         </div>
@@ -1604,17 +1661,11 @@ function CreateOrderPage() {
           </p>
         )}
 
-        {missingPricingRule && (
-          <div className="alert alert-warning">
-            No hay precios configurados en Firestore para la técnica "{form.technique}".
-          </div>
-        )}
-
-        {unitPrice > 0 && (
+        {form.technique && form.personalizationSize && form.personalizationSurchargeFrontInput !== '' && (isBothSides ? form.personalizationSizeBack && form.personalizationSurchargeBackInput !== '' : true) && (isInventoryGarment ? Boolean(selectedProduct) : form.customerGarmentPrice !== '') && (
           <div className="quote-summary">
             <div className="quote-breakdown">
               <div className="quote-row">
-                <span>Precio base de la prenda</span>
+                <span>{isCustomerGarment ? 'Monto por prenda del cliente' : 'Precio base de la prenda'}</span>
                 <strong>Q{unitBasePrice.toFixed(2)}</strong>
               </div>
 
@@ -1742,13 +1793,12 @@ function CreateOrderPage() {
 
         {form.garmentSource ===
           'customer' && (
-          <CustomerGarmentPreview
+        <CustomerGarmentPreview
             form={form}
+          images={customerGarmentImages}
             onImageChange={
-              (image) => {
-                setCustomerGarmentImage(
-                  image
-                )
+              (side, image) => {
+                setCustomerGarmentImages((current) => ({ ...current, [side]: image }))
                 setPreviewBase64('')
                 setAiResult(null)
               }
@@ -1765,9 +1815,8 @@ function CreateOrderPage() {
             selectedProduct
           }
 
-          customerGarmentImage={
-            customerGarmentImage
-          }
+          customerGarmentImage={customerGarmentImage}
+          customerGarmentImages={customerGarmentImages}
 
           customerGarment={{
             type:

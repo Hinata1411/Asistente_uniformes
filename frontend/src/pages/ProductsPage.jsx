@@ -216,6 +216,12 @@ function ProductsPage() {
         </div>
       )}
 
+      {products.some((product) => !product.size && Array.isArray(product.sizes) && product.sizes.length > 1) && (
+        <div className="alert alert-warning" role="alert">
+          Hay productos antiguos con varias tallas y un solo stock compartido. Para continuar, crea un producto por talla y asigna el stock real de cada una; no se puede repartir automáticamente sin esos datos.
+        </div>
+      )}
+
       <div className="products-grid">
         {products.map((product) => (
           <article
@@ -325,14 +331,17 @@ function ProductsPage() {
 
                 <div>
                   <span className="product-info-label">
-                    Tallas
+                    Talla
                   </span>
 
                   <strong>
-                    {product.sizes?.length > 0
-                      ? product.sizes.join(', ')
+                    {product.size || product.sizes?.[0]
+                      ? product.size || product.sizes[0]
                       : 'No definidas'}
                   </strong>
+                  {!product.size && Array.isArray(product.sizes) && product.sizes.length > 1 && (
+                    <span className="d-block text-warning small">Separar tallas y stock</span>
+                  )}
                 </div>
 
                 <div>
@@ -366,6 +375,7 @@ function ProductsPage() {
                   <button
                     type="button"
                     className="btn btn-outline-primary btn-sm"
+                    disabled={!product.size && Array.isArray(product.sizes) && product.sizes.length > 1}
                     onClick={() =>
                       navigate(
                         `/productos/editar/${product.id}`,

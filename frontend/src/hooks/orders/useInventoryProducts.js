@@ -80,10 +80,18 @@ const normalizeProduct = (document) => {
     stock:
       Number(data.stock || 0),
 
+    size:
+      data.size || (Array.isArray(rawSizes) ? rawSizes[0] || '' : ''),
+
+    legacyMultiSize:
+      !data.size && Array.isArray(rawSizes) && rawSizes.length > 1,
+
     sizes:
-      Array.isArray(rawSizes)
-        ? [...rawSizes]
-        : [],
+      data.size
+        ? [data.size]
+        : Array.isArray(rawSizes)
+          ? rawSizes.slice(0, 1)
+          : [],
 
     allowedTechniques:
       Array.isArray(rawTechniques)
@@ -116,16 +124,6 @@ const normalizeProduct = (document) => {
     createdAt:
       data.createdAt || ''
   }
-
-  console.log(
-    'CAMPOS ORIGINALES FIRESTORE:',
-    Object.keys(data)
-  )
-
-  console.log(
-    'PRODUCTO NORMALIZADO:',
-    normalizedProduct
-  )
 
   return normalizedProduct
 }

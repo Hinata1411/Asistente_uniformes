@@ -7,6 +7,25 @@ service cloud.firestore {
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function isStaff() { return signedIn() && profile().role in ['admin', 'empleado'] && profile().get('active', true) == true; }
     function isAdmin() { return isStaff() && profile().role == 'admin'; }
+    function validOrder(data) {
+      return data.quantity is int && data.quantity > 0
+        && data.garmentSource in ['inventory', 'customer']
+        && data.quoteTotal is number && data.quoteTotal >= 0
+        && data.status in ['pendiente_aprobacion', 'aprobado', 'en_produccion', 'en_arreglo', 'terminado', 'entregado', 'anulado'];
+    }
+    function orderChangesAreAllowed() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'orderDate', 'expectedDeliveryDate', 'customerName', 'phone', 'garmentSource',
+        'productId', 'productName', 'productType', 'productColor', 'customerGarment',
+        'size', 'quantity', 'technique', 'customizationSide', 'elements', 'previewImage',
+        'previewPath', 'aiValidation', 'aiValidatedAt', 'unitBasePrice', 'personalizationSize',
+        'personalizationSizeBack', 'personalizationSurchargeFront', 'personalizationSurchargeBack',
+        'personalizationSurcharge', 'quotedUnitPrice', 'quoteTotal', 'paymentPlan',
+        'initialPaymentAmount', 'depositPaid', 'finalPaymentPaid', 'totalPaid', 'balanceDue',
+        'paymentStatus', 'status', 'updatedAt', 'deliveredAt', 'deliveryHistory',
+        'cancelReason', 'cancelledAt'
+      ]);
+    }
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
@@ -32,8 +51,13 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read: if isStaff();
-      allow create, update: if isStaff()
-        && request.resource.data.quantity is int && request.resource.data.quantity > 0;
+      allow create: if isStaff() && validOrder(request.resource.data);
+      allow update: if isStaff()
+        && orderChangesAreAllowed()
+        && request.resource.data.quantity is int && request.resource.data.quantity > 0
+        && request.resource.data.quoteTotal is number && request.resource.data.quoteTotal >= 0
+        && request.resource.data.status in ['pendiente_aprobacion', 'aprobado', 'en_produccion', 'en_arreglo', 'terminado', 'entregado', 'anulado']
+        && (request.resource.data.status != 'anulado' || isAdmin());
       // La anulación o eliminación de pedidos es exclusiva del administrador.
       allow delete: if isAdmin();
     }

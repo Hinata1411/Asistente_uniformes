@@ -1,24 +1,23 @@
+import logoUrl from '../assets/brand/arte-grafia-logo.png'
+import { categoryOf, CATEGORIES, AREA_LABELS } from './businessModel'
 import jsPDF from 'jspdf'
 import {
   displayOrderDate,
   getProductName,
   getPaymentSummary,
-  getStatusBadge
+  getStatusBadge,
 } from './orderFormatting'
 
 // Generación del PDF descargable de un pedido. Se mantiene separado de
 // OrdersHistoryPage para poder seguir mejorando la plantilla sin
 // agregar más líneas a esa página.
 //
-// No se usa una imagen rasterizada del logo (evita tener que cargarla
-// de forma asíncrona antes de generar el PDF); en su lugar se dibuja
-// un monograma "AG" con los colores de marca directamente con jsPDF.
+// El logo oficial se carga antes de generar el documento.
 
 const BRAND_BLACK = [17, 17, 17]
 const BRAND_GOLD = [255, 198, 3]
 const TEXT_DARK = [26, 26, 26]
 const TEXT_MUTED = [107, 114, 128]
-const LIGHT_GOLD_BG = [253, 246, 220]
 const LIGHT_GOLD_BORDER = [240, 226, 171]
 
 // Mismos colores que styles/statusBadges.css, para que el estado se
@@ -30,7 +29,7 @@ const STATUS_PDF_COLORS = {
   outline: { bg: [255, 255, 255], text: [26, 26, 26] },
   slate: { bg: [75, 85, 99], text: [255, 255, 255] },
   green: { bg: [22, 163, 74], text: [255, 255, 255] },
-  red: { bg: [220, 38, 38], text: [255, 255, 255] }
+  red: { bg: [220, 38, 38], text: [255, 255, 255] },
 }
 
 const getStatusPdfColors = (status) => {
@@ -74,7 +73,7 @@ function loadImageAsDataUrl(url) {
         resolve({
           dataUrl: canvas.toDataURL('image/png'),
           width: img.naturalWidth,
-          height: img.naturalHeight
+          height: img.naturalHeight,
         })
       } catch (error) {
         reject(error)
@@ -89,22 +88,21 @@ function loadImageAsDataUrl(url) {
   })
 }
 
-export async function generateOrderPdf(order) {
+export async function generateOrderPdf(order, { download = true } = {}) {
+  const garment = categoryOf(order) === 'prenda'
+  const brandLogo = await loadImageAsDataUrl(logoUrl)
+  const referenceImages = await Promise.all(
+    (order.referenceImages || [])
+      .filter((src) => src !== order.previewImage)
+      .map(loadImageAsDataUrl),
+  )
   // Se resuelve ANTES de dibujar nada: si la imagen no carga (sin
   // conexión, CORS del bucket, etc.) el PDF sigue generándose igual,
   // solo que sin la vista previa.
   let previewImageData = null
 
-  if (order.previewImage) {
-    try {
-      previewImageData = await loadImageAsDataUrl(order.previewImage)
-    } catch (error) {
-      console.warn(
-        'No se pudo preparar la vista previa para el PDF:',
-        error
-      )
-    }
-  }
+  if (order.previewImage)
+    previewImageData = await loadImageAsDataUrl(order.previewImage)
 
   const docPDF = new jsPDF()
   const pageWidth = docPDF.internal.pageSize.getWidth()
@@ -119,7 +117,7 @@ export async function generateOrderPdf(order) {
 
   docPDF.setProperties({
     title: `Cotización - ${order.customerName || 'cliente'}`,
-    author: 'Arte Grafía'
+    author: 'Arte Grafía',
   })
 
   const ensureSpace = (needed) => {
@@ -174,36 +172,9 @@ export async function generateOrderPdf(order) {
   // Caja clara con pares clave/valor en dos columnas (datos del
   // pedido, forma de pago, etc.).
   const infoBox = (rows) => {
-    const rowHeight = 10.5
-    const boxHeight = Math.ceil(rows.length / 2) * rowHeight + 6
-
-    ensureSpace(boxHeight)
-
-    docPDF.setFillColor(...LIGHT_GOLD_BG)
-    docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
-    docPDF.roundedRect(marginX, y, contentWidth, boxHeight, 2, 2, 'FD')
-
-    const colWidth = contentWidth / 2
-    let rowY = y + 7
-
-    rows.forEach(([label, value], index) => {
-      const col = index % 2
-      const colX = marginX + 6 + col * colWidth
-
-      if (col === 0 && index > 0) rowY += rowHeight
-
-      docPDF.setFont('helvetica', 'normal')
-      docPDF.setFontSize(8)
-      docPDF.setTextColor(...TEXT_MUTED)
-      docPDF.text(label.toUpperCase(), colX, rowY)
-
-      docPDF.setFont('helvetica', 'bold')
-      docPDF.setFontSize(10)
-      docPDF.setTextColor(...TEXT_DARK)
-      docPDF.text(String(value), colX, rowY + 4.6)
-    })
-
-    y += boxHeight + 8
+    for (const [label, value] of rows)
+      paragraph(`${label}: ${value}`, { fontSize: 10 })
+    y += 3
   }
 
   const pill = (label, colors, x, pillY) => {
@@ -225,44 +196,46 @@ export async function generateOrderPdf(order) {
   // =========================
 
   docPDF.setFillColor(...BRAND_BLACK)
-  docPDF.rect(0, 0, pageWidth, 32, 'F')
-
-  docPDF.setFillColor(...BRAND_GOLD)
-  docPDF.circle(marginX + 7, 16, 7, 'F')
-  docPDF.setTextColor(...BRAND_BLACK)
-  docPDF.setFont('helvetica', 'bold')
-  docPDF.setFontSize(11)
-  docPDF.text('AG', marginX + 7, 18.5, { align: 'center' })
-
-  docPDF.setTextColor(255, 255, 255)
-  docPDF.setFont('helvetica', 'bold')
-  docPDF.setFontSize(15)
-  docPDF.text('Arte Grafía', marginX + 18, 14)
-
+  docPDF.rect(0, 0, pageWidth, 60, 'F')
+  docPDF.addImage(brandLogo.dataUrl, 'PNG', marginX, 8, 27, 27)
   docPDF.setTextColor(...BRAND_GOLD)
+  docPDF.setFont('helvetica', 'bold')
+  docPDF.setFontSize(20)
+  docPDF.text('Arte Grafía', marginX + 34, 16)
+  docPDF.setTextColor(255, 255, 255)
   docPDF.setFont('helvetica', 'normal')
   docPDF.setFontSize(10)
-  docPDF.text('Cotización de pedido personalizado', marginX + 18, 21)
-
-  docPDF.setTextColor(215, 215, 215)
-  docPDF.setFontSize(8.5)
+  docPDF.text('Cotización de pedido', marginX + 34, 23)
+  docPDF.text('Teléfono: 5425-3023', marginX + 34, 30)
+  docPDF.setFillColor(...BRAND_GOLD)
+  docPDF.roundedRect(marginX + 34, 34, 5, 5, 1, 1, 'F')
+  docPDF.setTextColor(...BRAND_BLACK)
+  docPDF.setFont('helvetica', 'bold')
+  docPDF.setFontSize(13)
+  docPDF.text('f', marginX + 35.8, 38.4)
+  docPDF.setTextColor(255, 255, 255)
+  docPDF.setFont('helvetica', 'normal')
+  docPDF.setFontSize(9)
+  docPDF.text('Facebook: ArteGrafía', marginX + 42, 38)
+  docPDF.setDrawColor(...BRAND_GOLD)
+  docPDF.setLineWidth(0.5)
+  docPDF.roundedRect(marginX + 100, 34, 5, 5, 1.3, 1.3, 'S')
+  docPDF.circle(marginX + 102.5, 36.5, 1.2, 'S')
+  docPDF.circle(marginX + 104, 35, 0.3, 'F')
+  docPDF.setTextColor(255, 255, 255)
+  docPDF.text('Instagram: ArteGrafía', marginX + 108, 38)
+  docPDF.setFontSize(8)
   docPDF.text(
-    `Generado: ${new Date().toLocaleDateString('es-GT')}`,
-    pageWidth - marginX,
-    13,
-    { align: 'right' }
+    'Avenida Chipilapa 3-69, zona 2, Barrio La Esperanza,',
+    marginX,
+    48,
   )
-
-  if (order.id) {
-    docPDF.text(
-      `Folio: ${order.id.slice(0, 10)}`,
-      pageWidth - marginX,
-      19,
-      { align: 'right' }
-    )
-  }
-
-  y = 42
+  docPDF.text('Jalapa, Guatemala', marginX, 53)
+  y = 69
+  paragraph(
+    `Folio: ${order.id || 'Sin asignar'} | Generado: ${new Date().toLocaleDateString('es-GT')}`,
+    { fontSize: 9 },
+  )
 
   // =========================
   // DATOS DEL PEDIDO
@@ -273,12 +246,12 @@ export async function generateOrderPdf(order) {
   infoBox([
     ['Cliente', order.customerName || 'No definido'],
     ['Teléfono', order.phone || 'No definido'],
-    ['Prenda', getProductName(order)],
-    ['Talla', order.size || 'No definida'],
+    [CATEGORIES[categoryOf(order)], getProductName(order)],
+    ['Talla', garment ? order.size || 'No registrada' : 'No aplica'],
     ['Cantidad', order.quantity || 0],
-    ['Técnica', order.technique || 'No definida'],
+    ['Técnica', garment ? order.technique || 'No registrada' : 'No aplica'],
     ['Fecha del pedido', displayOrderDate(order.orderDate || order.createdAt)],
-    ['Entrega prevista', displayOrderDate(order.expectedDeliveryDate)]
+    ['Entrega prevista', displayOrderDate(order.expectedDeliveryDate)],
   ])
 
   if (order.deliveredAt) {
@@ -290,35 +263,42 @@ export async function generateOrderPdf(order) {
   // COTIZACIÓN
   // =========================
 
+  if (order.description) paragraph(`Descripción: ${order.description}`)
   heading('Cotización')
 
   lineItem(
-    'Precio base de la prenda',
-    `Q${Number(order.unitBasePrice || 0).toFixed(2)}`
+    categoryOf(order) === 'publicidad'
+      ? 'Monto del trabajo'
+      : 'Precio base unitario',
+    `Q${Number(order.unitBasePrice || 0).toFixed(2)}`,
   )
 
-  if (order.personalizationSizeBack) {
-    lineItem(
-      `Recargo personalización - frente (${order.personalizationSize || 'chico'})`,
-      `Q${Number(
-        order.personalizationSurchargeFront ?? order.personalizationSurcharge ?? 0
-      ).toFixed(2)}`
-    )
-
-    lineItem(
-      `Recargo personalización - espalda (${order.personalizationSizeBack})`,
-      `Q${Number(order.personalizationSurchargeBack || 0).toFixed(2)}`
-    )
-  } else {
-    lineItem(
-      `Recargo personalización (${order.personalizationSize || 'chico'})`,
-      `Q${Number(order.personalizationSurcharge || 0).toFixed(2)}`
-    )
-  }
+  if (garment) {
+    if (order.areaDetails && Object.keys(order.areaDetails).length) {
+      for (const [area, detail] of Object.entries(order.areaDetails)) {
+        paragraph(`${AREA_LABELS[area] || area}: ${detail.size}`, {
+          fontSize: 10,
+        })
+        lineItem(
+          'Recargo por unidad',
+          `Q${Number(detail.surcharge || 0).toFixed(2)}`,
+        )
+      }
+    } else {
+      paragraph(
+        `Tamaño de personalización: ${order.personalizationSize || 'No registrado'}`,
+      )
+      lineItem(
+        'Recargo por personalización',
+        `Q${Number(order.personalizationSurcharge || 0).toFixed(2)}`,
+      )
+    }
+  } else if (order.personalizationSize)
+    paragraph(`Tamaño o especificaciones: ${order.personalizationSize}`)
 
   lineItem(
-    `Precio unitario  x  Cantidad (${order.quantity || 0})`,
-    `Q${Number(order.quotedUnitPrice || 0).toFixed(2)}`
+    'Precio unitario',
+    `Q${Number(order.quotedUnitPrice || 0).toFixed(2)}`,
   )
 
   y += 2
@@ -334,7 +314,7 @@ export async function generateOrderPdf(order) {
     `Q${Number(order.quoteTotal || 0).toFixed(2)}`,
     marginX + contentWidth - 5,
     y + 8,
-    { align: 'right' }
+    { align: 'right' },
   )
   y += 20
 
@@ -343,13 +323,20 @@ export async function generateOrderPdf(order) {
   // =========================
 
   heading('Forma de pago')
+  lineItem(
+    'Pago inicial previsto',
+    `Q${Number(order.initialPaymentAmount ?? (order.paymentPlan === 'completo' ? order.quoteTotal : Number(order.quoteTotal || 0) * 0.5)).toFixed(2)}`,
+  )
 
   infoBox([
-    ['Plan', order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%'],
+    [
+      'Plan',
+      order.paymentPlan === 'completo' ? 'Pago completo' : 'Anticipo 50%',
+    ],
     ['Anticipo / pago inicial', `Q${payment.initial.toFixed(2)}`],
     ['Pago final', `Q${payment.final.toFixed(2)}`],
     ['Total pagado', `Q${payment.paid.toFixed(2)}`],
-    ['Saldo pendiente', `Q${payment.balance.toFixed(2)}`]
+    ['Saldo pendiente', `Q${payment.balance.toFixed(2)}`],
   ])
 
   ensureSpace(10)
@@ -373,7 +360,7 @@ export async function generateOrderPdf(order) {
     getStatusBadge(order.status).label,
     getStatusPdfColors(order.status),
     marginX + 34,
-    y + 5
+    y + 5,
   )
   y += 16
 
@@ -381,81 +368,72 @@ export async function generateOrderPdf(order) {
   // VALIDACIÓN IA
   // =========================
 
-  heading('Validación del asistente inteligente')
+  if (garment) {
+    heading('Validación del asistente inteligente')
 
-  const aiValidation = order.aiValidation
+    const aiValidation = order.aiValidation
 
-  if (aiValidation) {
-    lineItem('Nivel de riesgo:', aiValidation.riskLevel || 'No definido')
+    if (aiValidation) {
+      lineItem('Nivel de riesgo:', aiValidation.riskLevel || 'No definido')
 
-    y += 1
-    // "Compatibilidad técnica" puede ser una frase larga (no solo una
-    // palabra corta como el nivel de riesgo): con lineItem() el texto
-    // se dibuja alineado a la derecha sin salto de línea y se monta
-    // encima de la etiqueta cuando es largo. paragraph() sí lo envuelve.
-    paragraph(
-      `Compatibilidad técnica: ${aiValidation.techniqueCompatibility || 'No disponible'}`
-    )
-
-    y += 1
-    paragraph(`Recomendación: ${aiValidation.recommendation || 'No disponible'}`)
-    paragraph(`Nota para producción: ${aiValidation.productionNote || 'No disponible'}`)
-
-    const warnings =
-      Array.isArray(aiValidation.warnings) && aiValidation.warnings.length > 0
-        ? aiValidation.warnings.map((warning) => `• ${warning}`).join('\n')
-        : 'Sin advertencias registradas.'
-
-    paragraph(`Advertencias:\n${warnings}`)
-
-    if (order.aiValidatedAt) {
+      y += 1
+      // "Compatibilidad técnica" puede ser una frase larga (no solo una
+      // palabra corta como el nivel de riesgo): con lineItem() el texto
+      // se dibuja alineado a la derecha sin salto de línea y se monta
+      // encima de la etiqueta cuando es largo. paragraph() sí lo envuelve.
       paragraph(
-        `Fecha de validación: ${new Date(order.aiValidatedAt).toLocaleString('es-GT')}`,
-        { fontSize: 9, spacing: 5 }
+        `Compatibilidad técnica: ${aiValidation.techniqueCompatibility || 'No disponible'}`,
       )
-    }
-  } else {
-    paragraph('Este pedido no tiene una validación almacenada.')
-  }
 
-  y += 4
+      y += 1
+      paragraph(
+        `Recomendación: ${aiValidation.recommendation || 'No disponible'}`,
+      )
+      paragraph(
+        `Nota para producción: ${aiValidation.productionNote || 'No disponible'}`,
+      )
+
+      const warnings =
+        Array.isArray(aiValidation.warnings) && aiValidation.warnings.length > 0
+          ? aiValidation.warnings.map((warning) => `• ${warning}`).join('\n')
+          : 'Sin advertencias registradas.'
+
+      paragraph(`Advertencias:\n${warnings}`)
+
+      if (order.aiValidatedAt) {
+        paragraph(
+          `Fecha de validación: ${new Date(order.aiValidatedAt).toLocaleString('es-GT')}`,
+          { fontSize: 9, spacing: 5 },
+        )
+      }
+    } else {
+      paragraph('Este pedido no tiene una validación almacenada.')
+    }
+
+    y += 4
+  }
 
   // =========================
   // VISTA PREVIA
   // =========================
 
-  if (previewImageData) {
-    const boxWidth = 80
-    const boxHeight = 95
-
-    ensureSpace(boxHeight + 5)
-    heading('Vista previa')
-
-    // Encaja la imagen dentro del recuadro sin deformarla
-    // (mismo criterio que un "object-fit: contain").
-    const scale = Math.min(
-      boxWidth / previewImageData.width,
-      boxHeight / previewImageData.height
-    )
-    const drawWidth = previewImageData.width * scale
-    const drawHeight = previewImageData.height * scale
-    const offsetX = marginX + (boxWidth - drawWidth) / 2
-    const offsetY = y + (boxHeight - drawHeight) / 2
-
-    docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
-    docPDF.rect(marginX, y, boxWidth, boxHeight)
+  const allImages = [previewImageData, ...referenceImages].filter(Boolean)
+  for (let index = 0; index < allImages.length; index++) {
+    const image = allImages[index]
+    const scale = Math.min(contentWidth / image.width, 155 / image.height)
+    const width = image.width * scale,
+      height = image.height * scale
+    ensureSpace(height + 20)
+    heading(index === 0 ? 'Vista previa' : `Imagen de referencia ${index}`)
     docPDF.addImage(
-      previewImageData.dataUrl,
+      image.dataUrl,
       'PNG',
-      offsetX,
-      offsetY,
-      drawWidth,
-      drawHeight
+      marginX + (contentWidth - width) / 2,
+      y,
+      width,
+      height,
     )
-    y += boxHeight + 5
-  } else {
-    heading('Vista previa')
-    paragraph('Vista previa no disponible para este pedido.')
+    y += height + 8
   }
 
   // =========================
@@ -471,7 +449,7 @@ export async function generateOrderPdf(order) {
     const reasonText = order.cancelReason || 'No definido'
     const reasonLines = docPDF.splitTextToSize(
       `Motivo de anulación: ${reasonText}`,
-      contentWidth - 10
+      contentWidth - 10,
     )
     const boxHeight = reasonLines.length * 5.5 + 6
     docPDF.roundedRect(marginX, y, contentWidth, boxHeight, 2, 2, 'FD')
@@ -511,14 +489,16 @@ export async function generateOrderPdf(order) {
       `Página ${page} de ${totalPages}`,
       pageWidth - marginX,
       pageHeight - 8,
-      { align: 'right' }
+      { align: 'right' },
     )
   }
 
-  const safeName = (order.customerName || 'cliente')
-    .trim()
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .replace(/\s+/g, '-') || 'cliente'
+  const safeName =
+    (order.customerName || 'cliente')
+      .trim()
+      .replace(/[^\p{L}\p{N}\s-]/gu, '')
+      .replace(/\s+/g, '-') || 'cliente'
 
-  docPDF.save(`cotizacion-${safeName}.pdf`)
+  if (download) docPDF.save(`cotizacion-${safeName}.pdf`)
+  return docPDF
 }

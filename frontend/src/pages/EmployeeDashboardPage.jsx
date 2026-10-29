@@ -3,7 +3,7 @@ import { collection, getDocs } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 
 import { db } from '../firebase/config'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { getProductName, getStatusBadge } from '../services/orderFormatting'
 import '../styles/statusBadges.css'
 import '../styles/EmployeeDashboardPage.css'
@@ -24,21 +24,16 @@ function EmployeeDashboardPage() {
   useEffect(() => {
     const loadOrders = async () => {
       try {
-        const snapshot = await getDocs(
-          collection(db, 'orders')
-        )
+        const snapshot = await getDocs(collection(db, 'orders'))
 
         const data = snapshot.docs.map((doc) => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
         }))
 
         setOrders(data)
       } catch (error) {
-        console.error(
-          'Error cargando pedidos para empleado:',
-          error
-        )
+        console.error('Error cargando pedidos para empleado:', error)
       } finally {
         setLoading(false)
       }
@@ -60,25 +55,19 @@ function EmployeeDashboardPage() {
       orders.filter(
         (order) =>
           order.status === 'pendiente_aprobacion' ||
-          order.status === 'aprobado'
+          order.status === 'aprobado',
       ),
-    [orders]
+    [orders],
   )
 
   const productionOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => order.status === 'en_produccion'
-      ),
-    [orders]
+    () => orders.filter((order) => order.status === 'en_produccion'),
+    [orders],
   )
 
   const finishedOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => order.status === 'terminado'
-      ),
-    [orders]
+    () => orders.filter((order) => order.status === 'terminado'),
+    [orders],
   )
 
   const recentOrders = useMemo(
@@ -91,7 +80,7 @@ function EmployeeDashboardPage() {
           return dateB - dateA
         })
         .slice(0, 5),
-    [orders]
+    [orders],
   )
 
   if (loading) {
@@ -111,27 +100,21 @@ function EmployeeDashboardPage() {
           </h2>
 
           <p className="employee-subtitle">
-            Consulta los pedidos que requieren atención
-            y accede rápidamente a las tareas del día.
+            Consulta los pedidos que requieren atención y accede rápidamente a
+            las tareas del día.
           </p>
         </div>
 
         <div className="employee-quick-actions">
-          <Link
-            to="/crearpedido"
-            className="btn btn-primary"
-          >
+          <Link to="/crearpedido" className="btn btn-primary">
             + Crear pedido
           </Link>
-
         </div>
       </div>
 
       <div className="employee-stat-grid">
         <div className="employee-stat-card">
-          <span className="employee-stat-label">
-            Pendientes
-          </span>
+          <span className="employee-stat-label">Pendientes</span>
 
           <strong className="employee-stat-value">
             {pendingOrders.length}
@@ -143,9 +126,7 @@ function EmployeeDashboardPage() {
         </div>
 
         <div className="employee-stat-card employee-stat-card-dark">
-          <span className="employee-stat-label">
-            En producción
-          </span>
+          <span className="employee-stat-label">En producción</span>
 
           <strong className="employee-stat-value">
             {productionOrders.length}
@@ -157,9 +138,7 @@ function EmployeeDashboardPage() {
         </div>
 
         <div className="employee-stat-card">
-          <span className="employee-stat-label">
-            Terminados
-          </span>
+          <span className="employee-stat-label">Terminados</span>
 
           <strong className="employee-stat-value">
             {finishedOrders.length}
@@ -176,30 +155,23 @@ function EmployeeDashboardPage() {
           <div>
             <h4>Pedidos recientes</h4>
 
-            <p>
-              Consulta rápidamente los últimos pedidos registrados.
-            </p>
+            <p>Consulta rápidamente los últimos pedidos registrados.</p>
           </div>
 
-          <Link
-            to="/historial"
-            className="btn btn-outline-primary btn-sm"
-          >
+          <Link to="/historial" className="btn btn-outline-primary btn-sm">
             Ver todos
           </Link>
         </div>
 
         {recentOrders.length === 0 ? (
-          <p className="text-muted mb-0">
-            No hay pedidos registrados.
-          </p>
+          <p className="text-muted mb-0">No hay pedidos registrados.</p>
         ) : (
           <div className="table-responsive">
             <table className="table align-middle mb-0 employee-orders-table">
               <thead>
                 <tr>
                   <th>Cliente</th>
-                  <th>Prenda</th>
+                  <th>Producto o trabajo</th>
                   <th>Técnica</th>
                   <th>Estado</th>
                 </tr>
@@ -208,24 +180,14 @@ function EmployeeDashboardPage() {
               <tbody>
                 {recentOrders.map((order) => (
                   <tr key={order.id}>
-                    <td>
-                      {order.customerName || 'No definido'}
-                    </td>
+                    <td>{order.customerName || 'No definido'}</td>
+
+                    <td>{getProductName(order)}</td>
+
+                    <td>{order.technique || 'No aplica'}</td>
 
                     <td>
-                      {getProductName(order)}
-                    </td>
-
-                    <td>
-                      {order.technique || 'No definida'}
-                    </td>
-
-                    <td>
-                      <span
-                        className={
-                          getStatusBadge(order.status).className
-                        }
-                      >
+                      <span className={getStatusBadge(order.status).className}>
                         {getStatusBadge(order.status).label}
                       </span>
                     </td>

@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { auth, db } from '../firebase/config'
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 
-const AuthContext = createContext()
+import { AuthContext } from './authState'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -21,32 +21,17 @@ export function AuthProvider({ children }) {
           return
         }
 
-        console.log('UID usuario autenticado:', currentUser.uid)
-
         const userRef = doc(db, 'users', currentUser.uid)
         const userSnap = await getDoc(userRef)
 
         if (userSnap.exists()) {
           const userData = userSnap.data()
 
-          console.log('Datos encontrados en Firestore:', userData)
-          console.log('Rol encontrado:', userData.role)
-
-          setRole(userData.role || null)
+          setRole(userData.active === false ? null : userData.role || null)
         } else {
-          console.warn(
-            'No existe documento users con UID:',
-            currentUser.uid
-          )
-
           setRole(null)
         }
-      } catch (error) {
-        console.error(
-          'Error obteniendo usuario desde Firestore:',
-          error
-        )
-
+      } catch {
         setRole(null)
       } finally {
         setLoading(false)
@@ -61,14 +46,10 @@ export function AuthProvider({ children }) {
       value={{
         user,
         role,
-        loading
+        loading,
       }}
     >
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth() {
-  return useContext(AuthContext)
 }

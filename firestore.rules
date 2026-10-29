@@ -1,41 +1,53 @@
 rules_version = '2';
-// Reglas de seguridad de Cloud Firestore — Asistente de personalización de uniformes.
-// Principio: denegar por defecto y permitir solo a usuarios internos activos según su rol.
 service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function isStaff() { return signedIn() && profile().role in ['admin', 'empleado'] && profile().get('active', true) == true; }
-    function isAdmin() { return isStaff() && profile().role == 'admin'; }
-
-    match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      // Un usuario puede editar su perfil, pero nunca su propio rol.
-      allow update: if signedIn() && request.auth.uid == uid
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active']);
-      allow create, delete: if isAdmin();
-    }
-
-    match /products/{productId} {
-      allow read: if isStaff();
-      // El empleado solo puede descontar o devolver stock al registrar pedidos.
-      allow update: if isAdmin() || (isStaff()
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
-                    && request.resource.data.stock is int && request.resource.data.stock >= 0);
-      allow create, delete: if isAdmin();
-    }
-
-    match /pricingRules/{technique} {
-      allow read: if isStaff();
-      allow write: if isAdmin();
-    }
-
-    match /orders/{orderId} {
-      allow read: if isStaff();
-      allow create, update: if isStaff()
-        && request.resource.data.quantity is int && request.resource.data.quantity > 0;
-      // La anulación o eliminación de pedidos es exclusiva del administrador.
-      allow delete: if isAdmin();
-    }
+ match /databases/{database}/documents {
+  function signedIn(){return request.auth != null;}
+  function profile(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
+  function staff(){return signedIn() && profile().role in ['admin','empleado'] && profile().get('active',true)==true;}
+  function admin(){return staff() && profile().role=='admin';}
+  function validOrder(d){
+   let category=d.get('category','prenda');
+   return d.quantity is int && d.quantity>0 && d.quoteTotal is number && d.quoteTotal>=0
+    && d.status in ['pendiente_aprobacion','aprobado','en_produccion','en_arreglo','terminado','entregado','anulado']
+    && ((category=='prenda' && d.get('garmentSource','inventory') in ['inventory','customer']) || (category=='producto' && d.garmentSource=='inventory') || (category=='publicidad' && d.garmentSource=='advertising'));
   }
+  function validProduct(d){return d.get('category','prenda') in ['prenda','producto'] && d.name is string && d.name.size()>0 && d.stock is int && d.stock>=0 && d.price is number && d.price>=0;}
+  function allowedOrderChanges(){return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+   'orderDate','expectedDeliveryDate','customerName','phone','garmentSource','category','description','referenceImages','areaDetails',
+   'productId','productName','productType','productColor','customerGarment','size','quantity','technique','customizationSide','elements','previewImage','previewPath',
+   'aiValidation','aiValidatedAt','unitBasePrice','personalizationSize','personalizationSizeBack','personalizationSurchargeFront','personalizationSurchargeBack','personalizationSurcharge','quotedUnitPrice','quoteTotal','paymentPlan','initialPaymentAmount','depositPaid','finalPaymentPaid','totalPaid','balanceDue','paymentStatus','status','updatedAt','deliveredAt','deliveryHistory','cancelReason','cancelledAt'
+  ]);}
+  match /users/{uid}{
+   allow read: if signedIn() && (request.auth.uid==uid || admin());
+   allow update: if signedIn() && request.auth.uid==uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','displayName','phone','updatedAt']);
+   allow create,delete: if admin();
+  }
+  match /products/{id}{
+   allow read: if staff();
+   allow create: if admin() && validProduct(request.resource.data);
+   allow update: if (admin() && validProduct(request.resource.data)) || (staff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) && request.resource.data.stock is int && request.resource.data.stock>=0);
+   allow delete: if admin();
+  }
+  match /pricingRules/{id}{allow read: if staff(); allow write: if admin();}
+  match /orders/{id}{
+   allow read: if staff();
+   allow create: if staff() && validOrder(request.resource.data) && request.resource.data.status=='pendiente_aprobacion';
+   allow update: if staff() && validOrder(request.resource.data) && request.resource.data.get('category','prenda')==resource.data.get('category','prenda') && allowedOrderChanges() && (request.resource.data.status!='anulado' || admin());
+   allow delete: if admin();
+  }
+  match /expenses/{id}{
+   allow read,delete: if admin();
+   allow create,update: if admin() && request.resource.data.description is string && request.resource.data.description.size()>0 && request.resource.data.description.size()<=2000
+    && request.resource.data.amount is number && request.resource.data.amount>0
+    && request.resource.data.date is string && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+    && request.resource.data.keys().hasOnly(['description','amount','date','provider','reference','paymentMethod','notes','createdAt','updatedAt']);
+  }
+  match /catalogs/{id}{
+   allow read: if staff();
+   allow delete: if admin();
+   allow create,update: if admin() && request.resource.data.name is string && request.resource.data.name.size()>0 && request.resource.data.name.size()<=150
+    && request.resource.data.url is string && request.resource.data.url.matches('^https?://.+')
+    && request.resource.data.keys().hasOnly(['name','url','createdAt','updatedAt']);
+  }
+ }
 }

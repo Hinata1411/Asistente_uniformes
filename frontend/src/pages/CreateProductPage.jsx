@@ -1,1025 +1,333 @@
 import { useEffect, useState } from 'react'
-import {
-  useLocation,
-  useNavigate,
-  useParams
-} from 'react-router-dom'
-
-import {
-  doc,
-  getDoc,
-  updateDoc
-} from 'firebase/firestore'
-
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL
-} from 'firebase/storage'
-
-import {
-  db,
-  storage
-} from '../firebase/config'
-
-import {
-  createProduct
-} from '../services/productsService'
-
+import { useNavigate, useParams } from 'react-router-dom'
+import { doc, getDoc, setDoc, collection, updateDoc } from 'firebase/firestore'
+import { db } from '../firebase/config'
 import { notify } from '../services/toastStore'
+import {
+  AREA_OPTIONS,
+  AREA_LABELS,
+  areaKeys,
+  categoryOf,
+  validAmount,
+  money,
+} from '../services/businessModel'
+import { readImage, persistImage, cleanUploads } from '../services/imageFiles'
+import '../styles/BusinessPages.css'
 
-import '../styles/CreateProductPage.css'
-
-function CreateProductPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
+const empty = {
+  category: 'prenda',
+  name: '',
+  type: '',
+  color: '',
+  stock: 0,
+  price: '',
+  size: '',
+  availableSides: [],
+  allowedTechniques: [],
+  images: {},
+}
+export default function CreateProductPage() {
   const { id } = useParams()
-
-  const productFromState =
-    location.state?.productToEdit || null
-
-  const isEditing =
-    Boolean(id)
-
-  const [form, setForm] = useState({
-    name: '',
-    type: '',
-    color: '',
-    stock: 0,
-    price: 0,
-    sizes: [],
-    availableSides: [],
-    allowedTechniques: []
-  })
-
-  const [
-    frontImageFile,
-    setFrontImageFile
-  ] = useState(null)
-
-  const [
-    backImageFile,
-    setBackImageFile
-  ] = useState(null)
-
-  const [
-    frontPreview,
-    setFrontPreview
-  ] = useState('')
-
-  const [
-    backPreview,
-    setBackPreview
-  ] = useState('')
-
-  const [
-    loading,
-    setLoading
-  ] = useState(false)
-
-  const [
-    loadingProduct,
-    setLoadingProduct
-  ] = useState(isEditing)
-
-  const sizeOptions = [
-    'S',
-    'M',
-    'L',
-    'XL'
-  ]
-
-  const sideOptions = [
-    {
-      value: 'frente',
-      label: 'Frente'
-    },
-    {
-      value: 'espalda',
-      label: 'Espalda'
-    },
-    {
-      value: 'ambos',
-      label: 'Frente y espalda'
-    }
-  ]
-
-  const techniqueOptions = [
-    'DTF',
-    'Bordado',
-    'Sublimación',
-    'Vinil textil'
-  ]
-
+  const navigate = useNavigate()
+  const [form, setForm] = useState(empty),
+    [loading, setLoading] = useState(Boolean(id)),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('')
   useEffect(() => {
-    const loadProduct = async () => {
-      if (!isEditing) {
-        return
-      }
-
-      try {
-        setLoadingProduct(true)
-
-        let productData =
-          productFromState
-
-        if (!productData) {
-          const productRef =
-            doc(
-              db,
-              'products',
-              id
-            )
-
-          const productSnap =
-            await getDoc(
-              productRef
-            )
-
-          if (!productSnap.exists()) {
-            notify(
-              'El producto no existe',
-              'error'
-            )
-
-            navigate('/productos')
-            return
-          }
-
-          productData = {
-            id:
-              productSnap.id,
-
-            ...productSnap.data()
-          }
-        }
-
-        setForm({
-          name:
-            productData.name || '',
-
-          type:
-            productData.type || '',
-
-          color:
-            productData.color || '',
-
-          stock:
-            Number(
-              productData.stock || 0
-            ),
-
-          price:
-            Number(
-              productData.price || 0
-            ),
-
-          sizes:
-            Array.isArray(
-              productData.sizes
-            )
-              ? productData.sizes
-              : [],
-
-          availableSides:
-            Array.isArray(
-              productData.availableSides
-            )
-              ? productData.availableSides
-              : [],
-
-          allowedTechniques:
-            Array.isArray(
-              productData.allowedTechniques
-            )
-              ? productData.allowedTechniques
-              : []
-        })
-
-        const frontImage =
-          productData.images?.frente ||
-          productData.frontImage ||
-          ''
-
-        const backImage =
-          productData.images?.espalda ||
-          productData.backImage ||
-          ''
-
-        setFrontPreview(
-          frontImage
-        )
-
-        setBackPreview(
-          backImage
-        )
-      } catch (error) {
-        console.error(
-          'Error cargando producto:',
-          error
-        )
-
-        notify(
-          'No se pudo cargar el producto',
-          'error'
-        )
-      } finally {
-        setLoadingProduct(false)
-      }
+    if (!id) return
+    let active = true
+    getDoc(doc(db, 'products', id))
+      .then((snap) => {
+        if (!snap.exists()) throw new Error('El producto no existe.')
+        const data = snap.data()
+        if (active)
+          setForm({
+            ...empty,
+            ...data,
+            category: categoryOf(data),
+            size: data.size || data.sizes?.[0] || '',
+            legacyMultiSize: !data.size && data.sizes?.length > 1,
+            images: {
+              ...data.images,
+              frente: data.images?.frente || data.frontImage || '',
+              espalda: data.images?.espalda || data.backImage || '',
+            },
+          })
+      })
+      .catch((err) => {
+        if (active) setError(err.message)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
     }
-
-    loadProduct()
-  }, [
-    id,
-    isEditing,
-    navigate,
-    productFromState
-  ])
-
-  const toggleArrayValue = (
-    field,
-    value
-  ) => {
-    setForm((prev) => {
-      const currentValues =
-        prev[field]
-
-      const exists =
-        currentValues.includes(value)
-
-      return {
-        ...prev,
-
-        [field]:
-          exists
-            ? currentValues.filter(
-                (item) =>
-                  item !== value
-              )
-            : [
-                ...currentValues,
-                value
-              ]
-      }
-    })
-  }
-
-  const validateImage = (
-    file
-  ) => {
-    if (!file) {
-      return false
-    }
-
-    const allowedTypes = [
-      'image/png',
-      'image/jpeg',
-      'image/webp'
-    ]
-
-    if (
-      !allowedTypes.includes(
-        file.type
-      )
-    ) {
-      notify(
-        'La imagen debe ser PNG, JPG, JPEG o WEBP.',
-        'warning'
-      )
-
-      return false
-    }
-
-    const maxSize =
-      5 * 1024 * 1024
-
-    if (
-      file.size > maxSize
-    ) {
-      notify(
-        'La imagen no puede superar los 5 MB.',
-        'warning'
-      )
-
-      return false
-    }
-
-    return true
-  }
-
-  const handleFrontImage = (
-    e
-  ) => {
-    const file =
-      e.target.files?.[0]
-
-    if (!file) {
-      return
-    }
-
-    if (
-      !validateImage(file)
-    ) {
-      e.target.value = ''
-      return
-    }
-
-    setFrontImageFile(
-      file
-    )
-
-    setFrontPreview(
-      URL.createObjectURL(
-        file
-      )
-    )
-  }
-
-  const handleBackImage = (
-    e
-  ) => {
-    const file =
-      e.target.files?.[0]
-
-    if (!file) {
-      return
-    }
-
-    if (
-      !validateImage(file)
-    ) {
-      e.target.value = ''
-      return
-    }
-
-    setBackImageFile(
-      file
-    )
-
-    setBackPreview(
-      URL.createObjectURL(
-        file
-      )
-    )
-  }
-
-  const uploadProductImage =
-    async (
-      file,
-      side
-    ) => {
-      if (!file) {
-        return ''
-      }
-
-      const safeFileName =
-        file.name.replace(
-          /[^a-zA-Z0-9._-]/g,
-          '_'
-        )
-
-      const imagePath =
-        `products/${Date.now()}-${side}-${safeFileName}`
-
-      const imageRef =
-        ref(
-          storage,
-          imagePath
-        )
-
-      await uploadBytes(
-        imageRef,
-        file
-      )
-
-      const downloadURL =
-        await getDownloadURL(
-          imageRef
-        )
-
-      return downloadURL
-    }
-
-  const handleSubmit = async (
-    e
-  ) => {
+  }, [id])
+  const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const garment = form.category === 'prenda'
+  const requiredAreas = garment
+    ? [...new Set(form.availableSides.flatMap(areaKeys))]
+    : ['frente']
+  const imageAreas = [...new Set(['frente', ...requiredAreas])]
+  const toggle = (key, value) =>
+    setForm((prev) => ({
+      ...prev,
+      [key]: prev[key].includes(value)
+        ? prev[key].filter((v) => v !== value)
+        : [...prev[key], value],
+    }))
+  const save = async (e) => {
     e.preventDefault()
-
-    if (
-      !form.name ||
-      !form.type ||
-      !form.color ||
-      form.stock < 0 ||
-      !form.price ||
-      Number(form.price) <= 0 ||
-      form.sizes.length === 0 ||
-      form.availableSides.length === 0 ||
-      form.allowedTechniques.length === 0
-    ) {
-      notify(
-        'Completa todos los campos obligatorios',
-        'warning'
-      )
-
-      return
-    }
-
-    if (
-      !isEditing &&
-      !frontImageFile
-    ) {
-      notify(
-        'Selecciona la imagen frontal del producto',
-        'warning'
-      )
-
-      return
-    }
-
+    if (busy) return
+    const uploaded = []
     try {
-      setLoading(true)
-
-      let frontImageUrl =
-        frontPreview
-
-      let backImageUrl =
-        backPreview
-
-      if (
-        frontImageFile
-      ) {
-        frontImageUrl =
-          await uploadProductImage(
-            frontImageFile,
-            'front'
-          )
-      }
-
-      if (
-        backImageFile
-      ) {
-        backImageUrl =
-          await uploadProductImage(
-            backImageFile,
-            'back'
-          )
-      }
-
-      const productData = {
-        name:
-          form.name.trim(),
-
-        type:
-          form.type,
-
-        color:
-          form.color.trim(),
-
-        stock:
-          Number(
-            form.stock
-          ),
-
-        price:
-          Number(
-            form.price
-          ),
-
-        sizes:
-          form.sizes,
-
-        availableSides:
-          form.availableSides,
-
-        allowedTechniques:
-          form.allowedTechniques,
-
-        images: {
-          frente:
-            frontImageUrl,
-
-          espalda:
-            backImageUrl
-        },
-
-        frontImage:
-          frontImageUrl,
-
-        backImage:
-          backImageUrl,
-
-        updatedAt:
-          new Date()
-            .toISOString()
-      }
-
-      if (isEditing) {
-        await updateDoc(
-          doc(
-            db,
-            'products',
-            id
-          ),
-          productData
+      if (form.legacyMultiSize)
+        throw new Error(
+          'Separa este producto antiguo en registros individuales con la talla y stock reales antes de usarlo.',
         )
-
-        notify(
-          'Producto actualizado correctamente',
-          'success'
+      if (
+        !form.name.trim() ||
+        !form.type.trim() ||
+        !Number.isInteger(Number(form.stock)) ||
+        Number(form.stock) < 0 ||
+        !validAmount(form.price)
+      )
+        throw new Error(
+          'Completa nombre, tipo, precio válido y stock entero no negativo.',
         )
-      } else {
-        await createProduct({
-          ...productData,
-
-          createdAt:
-            new Date()
-              .toISOString()
+      if (
+        garment &&
+        (!form.size.trim() ||
+          !form.color.trim() ||
+          !requiredAreas.length ||
+          !form.allowedTechniques.length)
+      )
+        throw new Error('Completa talla, color, áreas y técnicas de la prenda.')
+      if (imageAreas.some((area) => !form.images[area]))
+        throw new Error(
+          'Carga una fotografía para cada área habilitada y la imagen principal.',
+        )
+      setBusy(true)
+      const images = {}
+      for (const area of imageAreas)
+        images[area] = await persistImage(
+          form.images[area],
+          'products',
+          uploaded,
+        )
+      const data = {
+        category: form.category,
+        name: form.name.trim(),
+        type: form.type.trim(),
+        color: form.color.trim(),
+        stock: Number(form.stock),
+        price: money(form.price),
+        size: garment ? form.size.trim() : '',
+        sizes: garment ? [form.size.trim()] : [],
+        availableSides: garment ? form.availableSides : [],
+        allowedTechniques: garment ? form.allowedTechniques : [],
+        images,
+        frontImage: images.frente || '',
+        backImage: images.espalda || '',
+        updatedAt: new Date().toISOString(),
+      }
+      if (id) await updateDoc(doc(db, 'products', id), data)
+      else
+        await setDoc(doc(collection(db, 'products')), {
+          ...data,
+          active: true,
+          createdAt: new Date().toISOString(),
         })
-
-        notify(
-          'Producto registrado correctamente',
-          'success'
-        )
-      }
-
-      navigate(
-        '/productos'
-      )
-    } catch (error) {
-      console.error(
-        isEditing
-          ? 'Error actualizando producto:'
-          : 'Error creando producto:',
-        error
-      )
-
-      notify(
-        isEditing
-          ? `No se pudo actualizar el producto: ${error.message}`
-          : `No se pudo registrar el producto: ${error.message}`,
-        'error'
-      )
+      notify(id ? 'Producto actualizado' : 'Producto registrado', 'success')
+      navigate('/productos')
+    } catch (err) {
+      await cleanUploads(uploaded)
+      notify(err.message, 'error')
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
-
-  if (loadingProduct) {
+  if (loading) return <p>Cargando producto...</p>
+  if (error)
     return (
-      <div className="create-product-page">
-        <div className="app-card p-4">
-          Cargando producto...
-        </div>
+      <div role="alert" className="alert alert-danger">
+        {error}
       </div>
     )
-  }
-
   return (
-    <div className="create-product-page">
-
-      <div className="mb-4">
-        <h2 className="page-title">
-          {isEditing
-            ? 'Editar producto'
-            : 'Nuevo producto'}
-        </h2>
-
-        <p className="page-subtitle">
-          {isEditing
-            ? 'Actualiza la información de la prenda disponible para personalización.'
-            : 'Registra una nueva prenda disponible para personalización.'}
-        </p>
-      </div>
-
-      <form
-        className="app-card p-4"
-        onSubmit={
-          handleSubmit
-        }
-      >
-        <div className="row g-3">
-
-          {/* NOMBRE */}
-
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Nombre del producto
+    <div className="business-page">
+      <h2>{id ? 'Editar producto' : 'Nuevo producto'}</h2>
+      <form className="order-section" onSubmit={save}>
+        <fieldset disabled={busy}>
+          {form.legacyMultiSize && (
+            <div className="alert alert-warning">
+              Este registro antiguo comparte stock entre varias tallas. Crea un
+              registro nuevo por talla y desactiva el antiguo.
+            </div>
+          )}
+          <div className="row g-3">
+            <label className="col-md-6">
+              Categoría
+              <select
+                className="form-select"
+                value={form.category}
+                disabled={Boolean(id)}
+                onChange={(e) => set('category', e.target.value)}
+              >
+                <option value="prenda">Prenda</option>
+                <option value="producto">Producto</option>
+              </select>
             </label>
-
-            <input
-              type="text"
-              className="form-control"
-              value={
-                form.name
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  name:
-                    e.target.value
-                })
-              }
-              placeholder="Ej. Jersey Enduro Pro"
+            <Input
+              label="Nombre"
+              value={form.name}
+              onChange={(v) => set('name', v)}
               required
             />
-          </div>
-
-          {/* TIPO */}
-
-          <div className="col-12 col-md-3">
-            <label className="form-label">
-              Tipo
-            </label>
-
-            <select
-              className="form-select"
-              value={
-                form.type
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  type:
-                    e.target.value
-                })
-              }
+            <Input
+              label="Tipo"
+              value={form.type}
+              onChange={(v) => set('type', v)}
               required
-            >
-              <option value="">
-                Seleccione
-              </option>
-
-              <option value="playera">
-                Playera
-              </option>
-
-              <option value="polo">
-                Playera Polo
-              </option>
-
-              <option value="camisa_columbia">
-                Camisa Columbia
-              </option>
-
-              <option value="jersey">
-                Jersey
-              </option>
-
-              <option value="uniforme_futbol">
-                Uniforme de fútbol
-              </option>
-
-              <option value="pantalon">
-                Pantalón
-              </option>
-
-              <option value="short">
-                Short
-              </option>
-
-              <option value="kit">
-                Kit / Conjunto
-              </option>
-
-              <option value="otro">
-                Otro
-              </option>
-            </select>
-          </div>
-
-          {/* STOCK */}
-
-          <div className="col-12 col-md-3">
-            <label className="form-label">
-              Stock
-            </label>
-
-            <input
+            />
+            <Input
+              label="Color"
+              value={form.color}
+              onChange={(v) => set('color', v)}
+              required={garment}
+            />
+            <Input
+              label="Stock"
               type="number"
-              className="form-control"
               min="0"
-              value={
-                form.stock
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  stock:
-                    Number(
-                      e.target.value
-                    )
-                })
-              }
+              step="1"
+              value={form.stock}
+              onChange={(v) => set('stock', v)}
               required
             />
-          </div>
-
-          {/* PRECIO */}
-
-          <div className="col-12 col-md-3">
-            <label className="form-label">
-              Precio de venta (Q)
-            </label>
-
-            <input
+            <Input
+              label="Precio de referencia (Q)"
               type="number"
-              className="form-control"
               min="0"
               step="0.01"
-              value={
-                form.price
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  price:
-                    e.target.value
-                })
-              }
+              value={form.price}
+              onChange={(v) => set('price', v)}
               required
             />
-          </div>
-
-          {/* COLOR */}
-
-          <div className="col-12 col-md-4">
-            <label className="form-label">
-              Color
-            </label>
-
-            <input
-              type="text"
-              className="form-control"
-              value={
-                form.color
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  color:
-                    e.target.value
-                })
-              }
-              placeholder="Ej. Negro"
-              required
-            />
-          </div>
-
-          {/* TALLAS */}
-
-          <div className="col-12 col-md-8">
-            <label className="form-label">
-              Tallas disponibles
-            </label>
-
-            <div className="option-group">
-              {sizeOptions.map(
-                (size) => (
-                  <label
-                    key={
-                      size
-                    }
-                    className="option-check"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.sizes.includes(
-                          size
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'sizes',
-                          size
-                        )
-                      }
-                    />
-
-                    <span>
-                      {size}
-                    </span>
-                  </label>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* ÁREAS */}
-
-          <div className="col-12">
-            <label className="form-label">
-              Áreas disponibles para personalización
-            </label>
-
-            <div className="option-group">
-              {sideOptions.map(
-                (side) => (
-                  <label
-                    key={
-                      side.value
-                    }
-                    className="option-check"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.availableSides.includes(
-                          side.value
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'availableSides',
-                          side.value
-                        )
-                      }
-                    />
-
-                    <span>
-                      {side.label}
-                    </span>
-                  </label>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* TÉCNICAS */}
-
-          <div className="col-12">
-            <label className="form-label">
-              Técnicas permitidas
-            </label>
-
-            <div className="option-group">
-              {techniqueOptions.map(
-                (
-                  technique
-                ) => (
-                  <label
-                    key={
-                      technique
-                    }
-                    className="option-check"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.allowedTechniques.includes(
-                          technique
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'allowedTechniques',
-                          technique
-                        )
-                      }
-                    />
-
-                    <span>
-                      {technique}
-                    </span>
-                  </label>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* IMAGEN FRONTAL */}
-
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Imagen frontal
-            </label>
-
-            <input
-              type="file"
-              className="form-control"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={
-                handleFrontImage
-              }
-            />
-
-            <div className="form-text">
-              {isEditing
-                ? 'Selecciona una nueva imagen únicamente si deseas reemplazar la actual.'
-                : 'PNG, JPG o WEBP. Máximo 5 MB.'}
-            </div>
-
-            {frontPreview && (
-              <div className="mt-3">
-                <img
-                  src={
-                    frontPreview
-                  }
-                  alt="Vista previa frontal"
-                  style={{
-                    width:
-                      '100%',
-
-                    maxHeight:
-                      '250px',
-
-                    objectFit:
-                      'contain',
-
-                    borderRadius:
-                      '8px'
-                  }}
-                />
-              </div>
+            {garment && (
+              <Input
+                label="Talla manual"
+                value={form.size}
+                onChange={(v) => set('size', v)}
+                maxLength="50"
+                required
+              />
             )}
           </div>
-
-          {/* IMAGEN TRASERA */}
-
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Imagen trasera
-            </label>
-
-            <input
-              type="file"
-              className="form-control"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={
-                handleBackImage
-              }
-            />
-
-            <div className="form-text">
-              {isEditing
-                ? 'Opcional. Selecciona otra imagen si deseas reemplazar la actual.'
-                : 'Opcional. PNG, JPG o WEBP. Máximo 5 MB.'}
-            </div>
-
-            {backPreview && (
-              <div className="mt-3">
-                <img
-                  src={
-                    backPreview
-                  }
-                  alt="Vista previa trasera"
-                  style={{
-                    width:
-                      '100%',
-
-                    maxHeight:
-                      '250px',
-
-                    objectFit:
-                      'contain',
-
-                    borderRadius:
-                      '8px'
+          <p className="form-text">
+            El precio de cada pedido se ingresa manualmente al cotizar.
+          </p>
+          {garment && (
+            <>
+              <h5>Áreas disponibles para personalización</h5>
+              <div className="d-flex flex-wrap gap-3">
+                {AREA_OPTIONS.map(([value, label]) => (
+                  <label key={value}>
+                    <input
+                      type="checkbox"
+                      checked={form.availableSides.includes(value)}
+                      onChange={() => toggle('availableSides', value)}
+                    />{' '}
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <h5 className="mt-3">Técnicas permitidas</h5>
+              <div className="d-flex flex-wrap gap-3">
+                {['DTF', 'Bordado', 'Sublimación', 'Vinil textil'].map((t) => (
+                  <label key={t}>
+                    <input
+                      type="checkbox"
+                      checked={form.allowedTechniques.includes(t)}
+                      onChange={() => toggle('allowedTechniques', t)}
+                    />{' '}
+                    {t}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+          <h5 className="mt-4">Fotografías</h5>
+          <div className="row g-3">
+            {imageAreas.map((area) => (
+              <label key={area} className="col-md-6">
+                {area === 'frente' && !garment
+                  ? 'Imagen del producto'
+                  : AREA_LABELS[area]}
+                <input
+                  type="file"
+                  className="form-control"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    try {
+                      const image = await readImage(file)
+                      setForm((prev) => ({
+                        ...prev,
+                        images: { ...prev.images, [area]: image },
+                      }))
+                    } catch (err) {
+                      notify(err.message, 'error')
+                    }
+                    e.target.value = ''
                   }}
                 />
-              </div>
-            )}
+                {form.images[area] && (
+                  <img
+                    className="reference-thumb"
+                    src={form.images[area]}
+                    alt={AREA_LABELS[area]}
+                  />
+                )}
+              </label>
+            ))}
           </div>
-
-        </div>
-
-        <div className="d-flex justify-content-end gap-2 mt-4">
-
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={() =>
-              navigate(
-                '/productos'
-              )
-            }
-            disabled={
-              loading
-            }
-          >
-            Cancelar
-          </button>
-
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={
-              loading
-            }
-          >
-            {loading
-              ? isEditing
-                ? 'Actualizando...'
-                : 'Subiendo imágenes...'
-              : isEditing
-                ? 'Actualizar producto'
-                : 'Registrar producto'}
-          </button>
-
-        </div>
+          <p className="form-text">
+            PNG, JPG o WEBP, menos de 5 MB por fotografía. Las mangas requieren
+            su propia fotografía.
+          </p>
+          <div className="d-flex gap-2 mt-4">
+            <button className="btn btn-warning" type="submit">
+              {busy
+                ? 'Guardando...'
+                : id
+                  ? 'Guardar cambios'
+                  : 'Registrar producto'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={() => navigate('/productos')}
+            >
+              Cancelar
+            </button>
+          </div>
+        </fieldset>
       </form>
     </div>
   )
 }
-
-export default CreateProductPage
+function Input({ label, onChange, ...props }) {
+  return (
+    <label className="col-md-6">
+      {label}
+      <input
+        className="form-control"
+        {...props}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  )
+}

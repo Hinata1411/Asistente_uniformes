@@ -1,25 +1,26 @@
+import { categoryOf, CATEGORIES, AREA_LABELS } from '../services/businessModel'
 import { useEffect, useState, useRef, useId } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { db, storage } from '../firebase/config'
 import {
   collection,
-  getDocs,
+  onSnapshot,
   doc,
   updateDoc,
-  deleteDoc,
+  runTransaction,
   serverTimestamp,
   arrayUnion,
-  getDoc
+  getDoc,
 } from 'firebase/firestore'
 import { ref, deleteObject } from 'firebase/storage'
 import OrderAIValidationDetails from '../components/OrderAIValidationDetails'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   localDateValue,
   displayOrderDate,
   getProductName,
   getPaymentSummary,
-  getStatusBadge
+  getStatusBadge,
 } from '../services/orderFormatting'
 import { generateOrderPdf } from '../services/orderPdfService'
 import { notify } from '../services/toastStore'
@@ -68,7 +69,10 @@ function AIValidationPopover({ order }) {
       ref={container}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => {
-        if (!pinned.current && !container.current?.contains(document.activeElement)) {
+        if (
+          !pinned.current &&
+          !container.current?.contains(document.activeElement)
+        ) {
           setOpen(false)
         }
       }}
@@ -104,7 +108,9 @@ function AIValidationPopover({ order }) {
                 validatedAt={order.aiValidatedAt}
               />
             ) : (
-              <p className="mb-0 text-muted">Este pedido no tiene una validación guardada.</p>
+              <p className="mb-0 text-muted">
+                Este pedido no tiene una validación guardada.
+              </p>
             )}
           </section>
         </div>
@@ -113,7 +119,6 @@ function AIValidationPopover({ order }) {
   )
 }
 
-
 function OrdersHistoryPage() {
   const { role } = useAuth()
   const isAdmin = role === 'admin'
@@ -121,227 +126,202 @@ function OrdersHistoryPage() {
   const [orders, setOrders] = useState([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  // Por defecto el filtro arranca en la fecha de hoy.
-  const [dateFilter, setDateFilter] = useState(() =>
-    localDateValue(new Date())
-  )
+  // Mostrar todo el historial hasta que el usuario elija una fecha.
+  const [dateFilter, setDateFilter] = useState('')
 
   const navigate = useNavigate()
 
-  const loadOrders = async () => {
-    try {
-      const querySnapshot = await getDocs(
-        collection(db, 'orders')
-      )
-
-      const ordersData = querySnapshot.docs.map(
-        (orderDoc) => ({
-          ...orderDoc.data(),
-          id: orderDoc.id
-        })
-      )
-
-      setOrders(ordersData)
-    } catch (error) {
-      console.error('Error cargando pedidos:', error)
-    }
-  }
-
-  useEffect(() => {
-    loadOrders()
-  }, [])
-
-  const handleChangeStatus = async (orderId, newStatus) => {
-  const order = orders.find((item) => item.id === orderId)
-
-  if (!order || order.status === newStatus) return
-
-  if (newStatus === 'anulado') {
-    await handleCancelOrder(order)
-    return
-  }
-
-  const allowedStatuses = [
-    'pendiente_aprobacion',
-    'aprobado',
-    'en_produccion',
-    'en_arreglo',
-    'terminado',
-    'entregado'
-  ]
-
-  if (!allowedStatuses.includes(newStatus)) return
-
-  const total = Number(order.quoteTotal)
-
-  if (!Number.isFinite(total) || total < 0) {
-    notify('El pedido no tiene un total válido.', 'warning')
-    return
-  }
-
-  const roundMoney = (value) =>
-    Math.round((value + Number.EPSILON) * 100) / 100
-
-  // Recuperar el pago inicial sin usar el saldo que pudo
-  // haberse puesto en cero al entregar.
-  let initialPayment = Number(order.initialPaymentAmount)
-
-  if (
-    order.initialPaymentAmount == null ||
-    !Number.isFinite(initialPayment)
-  ) {
-    const previousDeposit = Number(order.depositPaid)
-
-    // Compatibilidad con pedidos anteriores.
-    if (
-      Number.isFinite(previousDeposit) &&
-      previousDeposit > 0
-    ) {
-      initialPayment = previousDeposit
-    } else {
-      initialPayment =
-        order.paymentPlan === 'completo'
-          ? total
-          : roundMoney(total * 0.5)
-    }
-  }
-
-  initialPayment = roundMoney(
-    Math.min(total, Math.max(0, initialPayment))
+  useEffect(
+    () =>
+      onSnapshot(
+        collection(db, 'orders'),
+        (snapshot) => {
+          setOrders(snapshot.docs.map((d) => ({ ...d.data(), id: d.id })))
+        },
+        () =>
+          notify(
+            'No se pudieron cargar los pedidos. Revisa tu conexión y permisos.',
+            'error',
+          ),
+      ),
+    [],
   )
 
-  const previousStatus =
-    order.status || 'pendiente_aprobacion'
+  const handleChangeStatus = async (orderId, newStatus) => {
+    const order = orders.find((item) => item.id === orderId)
 
-  // Los pedidos nuevos deben pasar primero por aprobación.
-  if (
-    previousStatus === 'pendiente_aprobacion' &&
-    newStatus !== 'aprobado'
-  ) {
-    notify('Primero debes aprobar el pedido y confirmar el pago inicial.', 'warning')
-    return
-  }
+    if (!order || order.status === newStatus) return
 
-  if (
-    previousStatus === 'pendiente_aprobacion' &&
-    newStatus === 'aprobado'
-  ) {
-    const confirmed = await askConfirm(
-      `¿Confirmás que recibiste Q${initialPayment.toFixed(2)} ` +
-      'como pago inicial y deseas aprobar el pedido?',
-      { confirmLabel: 'Sí, aprobar' }
-    )
-
-    if (!confirmed) return
-  }
-
-  if (newStatus === 'entregado') {
-    const pending = roundMoney(
-      Math.max(0, total - initialPayment)
-    )
-
-    const confirmed = await askConfirm(
-      `¿Confirmás que el pedido fue entregado y está totalmente pagado? ` +
-      `El saldo a liquidar es Q${pending.toFixed(2)}.`,
-      { confirmLabel: 'Sí, entregado' }
-    )
-
-    if (!confirmed) return
-  }
-
-  if (previousStatus === 'entregado') {
-    const confirmed = await askConfirm(
-      'Vas a corregir una entrega registrada. ' +
-      'Se revertirá el registro del pago final y se recuperará ' +
-      'el saldo correspondiente al estado seleccionado. ¿Continuar?'
-    )
-
-    if (!confirmed) return
-  } else if (newStatus === 'pendiente_aprobacion') {
-    const confirmed = await askConfirm(
-      'Al regresar a pendiente se quitará la confirmación del pago inicial. ' +
-      'El importe previsto se conservará para volver a aprobar. ¿Continuar?'
-    )
-
-    if (!confirmed) return
-  }
-
-  const paid =
-    newStatus === 'pendiente_aprobacion'
-      ? 0
-      : initialPayment
-
-  const finalPayment =
-    newStatus === 'entregado'
-      ? roundMoney(total - initialPayment)
-      : 0
-
-  const changes = {
-    status: newStatus,
-    initialPaymentAmount: initialPayment,
-
-    // Pago inicial confirmado.
-    depositPaid: paid,
-
-    // Pago realizado al entregar.
-    finalPaymentPaid: finalPayment,
-
-    // Total efectivamente registrado como pagado.
-    totalPaid: roundMoney(paid + finalPayment),
-
-    balanceDue: roundMoney(
-      Math.max(0, total - paid - finalPayment)
-    ),
-
-    updatedAt: new Date().toISOString()
-  }
-
-  changes.paymentStatus = getPaymentSummary({ ...order, ...changes }).status
-
-  if (newStatus === 'entregado') {
-    // Conservar la primera entrega y cada confirmación posterior.
-    if (!order.deliveredAt) changes.deliveredAt = serverTimestamp()
-    changes.deliveryHistory = arrayUnion({
-      action: 'entrega_confirmada',
-      recordedAt: new Date().toISOString()
-    })
-  } else if (previousStatus === 'entregado') {
-    // Regresar de estado NO borra la fecha real de entrega.
-    changes.deliveryHistory = arrayUnion({
-      action: 'estado_reabierto',
-      status: newStatus,
-      recordedAt: new Date().toISOString()
-    })
-  }
-
-
-  try {
-    // Guardar estado e importes juntos.
-    await updateDoc(doc(db, 'orders', orderId), changes)
-
-    // Leer los valores resueltos por Firestore (timestamps y arrays).
-    const savedOrder = await getDoc(doc(db, 'orders', orderId))
-    if (savedOrder.exists()) {
-      setOrders((prev) => prev.map((item) => item.id === orderId
-        ? { ...savedOrder.data(), id: orderId }
-        : item))
+    if (newStatus === 'anulado' && !isAdmin) return
+    if (newStatus === 'anulado') {
+      await handleCancelOrder(order)
+      return
     }
 
-  } catch (error) {
-    console.error('Error actualizando pedido:', error)
-    notify('No se pudo actualizar el pedido. Intenta nuevamente.', 'error')
-  }
-}
+    const allowedStatuses = [
+      'pendiente_aprobacion',
+      'aprobado',
+      'en_produccion',
+      'en_arreglo',
+      'terminado',
+      'entregado',
+    ]
 
-const handleRegisterBalancePayment = async (order) => {
-  await handleChangeStatus(order.id, 'entregado')
-}
+    if (!allowedStatuses.includes(newStatus)) return
+
+    const total = Number(order.quoteTotal)
+
+    if (!Number.isFinite(total) || total < 0) {
+      notify('El pedido no tiene un total válido.', 'warning')
+      return
+    }
+
+    const roundMoney = (value) =>
+      Math.round((value + Number.EPSILON) * 100) / 100
+
+    // Recuperar el pago inicial sin usar el saldo que pudo
+    // haberse puesto en cero al entregar.
+    let initialPayment = Number(order.initialPaymentAmount)
+
+    if (
+      order.initialPaymentAmount == null ||
+      !Number.isFinite(initialPayment)
+    ) {
+      const previousDeposit = Number(order.depositPaid)
+
+      // Compatibilidad con pedidos anteriores.
+      if (Number.isFinite(previousDeposit) && previousDeposit > 0) {
+        initialPayment = previousDeposit
+      } else {
+        initialPayment =
+          order.paymentPlan === 'completo' ? total : roundMoney(total * 0.5)
+      }
+    }
+
+    initialPayment = roundMoney(Math.min(total, Math.max(0, initialPayment)))
+
+    const previousStatus = order.status || 'pendiente_aprobacion'
+
+    // Los pedidos nuevos deben pasar primero por aprobación.
+    if (previousStatus === 'pendiente_aprobacion' && newStatus !== 'aprobado') {
+      notify(
+        'Primero debes aprobar el pedido y confirmar el pago inicial.',
+        'warning',
+      )
+      return
+    }
+
+    if (previousStatus === 'pendiente_aprobacion' && newStatus === 'aprobado') {
+      const confirmed = await askConfirm(
+        `¿Confirmás que recibiste Q${initialPayment.toFixed(2)} ` +
+          'como pago inicial y deseas aprobar el pedido?',
+        { confirmLabel: 'Sí, aprobar' },
+      )
+
+      if (!confirmed) return
+    }
+
+    if (newStatus === 'entregado') {
+      const pending = roundMoney(Math.max(0, total - initialPayment))
+
+      const confirmed = await askConfirm(
+        `¿Confirmás que el pedido fue entregado y está totalmente pagado? ` +
+          `El saldo a liquidar es Q${pending.toFixed(2)}.`,
+        { confirmLabel: 'Sí, entregado' },
+      )
+
+      if (!confirmed) return
+    }
+
+    if (previousStatus === 'entregado') {
+      const confirmed = await askConfirm(
+        'Vas a corregir una entrega registrada. ' +
+          'Se revertirá el registro del pago final y se recuperará ' +
+          'el saldo correspondiente al estado seleccionado. ¿Continuar?',
+      )
+
+      if (!confirmed) return
+    } else if (newStatus === 'pendiente_aprobacion') {
+      const confirmed = await askConfirm(
+        'Al regresar a pendiente se quitará la confirmación del pago inicial. ' +
+          'El importe previsto se conservará para volver a aprobar. ¿Continuar?',
+      )
+
+      if (!confirmed) return
+    }
+
+    const paid = newStatus === 'pendiente_aprobacion' ? 0 : initialPayment
+
+    const finalPayment =
+      newStatus === 'entregado' ? roundMoney(total - initialPayment) : 0
+
+    const changes = {
+      status: newStatus,
+      initialPaymentAmount: initialPayment,
+
+      // Pago inicial confirmado.
+      depositPaid: paid,
+
+      // Pago realizado al entregar.
+      finalPaymentPaid: finalPayment,
+
+      // Total efectivamente registrado como pagado.
+      totalPaid: roundMoney(paid + finalPayment),
+
+      balanceDue: roundMoney(Math.max(0, total - paid - finalPayment)),
+
+      updatedAt: new Date().toISOString(),
+    }
+
+    changes.paymentStatus = getPaymentSummary({ ...order, ...changes }).status
+
+    if (newStatus === 'entregado') {
+      // Conservar la primera entrega y cada confirmación posterior.
+      if (!order.deliveredAt) changes.deliveredAt = serverTimestamp()
+      changes.deliveryHistory = arrayUnion({
+        action: 'entrega_confirmada',
+        recordedAt: new Date().toISOString(),
+      })
+    } else if (previousStatus === 'entregado') {
+      // Regresar de estado NO borra la fecha real de entrega.
+      changes.deliveryHistory = arrayUnion({
+        action: 'estado_reabierto',
+        status: newStatus,
+        recordedAt: new Date().toISOString(),
+      })
+    }
+
+    try {
+      // Guardar estado e importes juntos.
+      await updateDoc(doc(db, 'orders', orderId), changes)
+
+      // Leer los valores resueltos por Firestore (timestamps y arrays).
+      const savedOrder = await getDoc(doc(db, 'orders', orderId))
+      if (savedOrder.exists()) {
+        setOrders((prev) =>
+          prev.map((item) =>
+            item.id === orderId ? { ...savedOrder.data(), id: orderId } : item,
+          ),
+        )
+      }
+    } catch (error) {
+      console.error('Error actualizando pedido:', error)
+      notify('No se pudo actualizar el pedido. Intenta nuevamente.', 'error')
+    }
+  }
+
+  const handleRegisterBalancePayment = async (order) => {
+    await handleChangeStatus(order.id, 'entregado')
+  }
 
   const handleChangePaymentPlan = async (order, newPlan) => {
     if (!newPlan || newPlan === order.paymentPlan) return
 
     if (['entregado', 'anulado'].includes(order.status)) {
-      notify('No se puede cambiar la forma de pago de un pedido entregado o anulado.', 'warning')
+      notify(
+        'No se puede cambiar la forma de pago de un pedido entregado o anulado.',
+        'warning',
+      )
       return
     }
 
@@ -351,9 +331,7 @@ const handleRegisterBalancePayment = async (order) => {
       Math.round((value + Number.EPSILON) * 100) / 100
 
     const newInitialPayment =
-      newPlan === 'completo'
-        ? total
-        : roundMoney(total * 0.5)
+      newPlan === 'completo' ? total : roundMoney(total * 0.5)
 
     const alreadyApproved =
       order.status && order.status !== 'pendiente_aprobacion'
@@ -361,7 +339,7 @@ const handleRegisterBalancePayment = async (order) => {
     const confirmed = await askConfirm(
       newPlan === 'completo'
         ? `El cliente pagará el total (Q${total.toFixed(2)}) en lugar del anticipo del 50%. ¿Continuar?`
-        : `El cliente pagará un anticipo del 50% (Q${newInitialPayment.toFixed(2)}) en lugar del pago completo. ¿Continuar?`
+        : `El cliente pagará un anticipo del 50% (Q${newInitialPayment.toFixed(2)}) en lugar del pago completo. ¿Continuar?`,
     )
 
     if (!confirmed) return
@@ -369,7 +347,7 @@ const handleRegisterBalancePayment = async (order) => {
     const changes = {
       paymentPlan: newPlan,
       initialPaymentAmount: newInitialPayment,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     }
 
     // Si el pedido ya fue aprobado (el anticipo/pago inicial ya se
@@ -377,12 +355,10 @@ const handleRegisterBalancePayment = async (order) => {
     // considera pagado y el saldo pendiente.
     if (alreadyApproved && order.status !== 'entregado') {
       changes.depositPaid = newInitialPayment
-      changes.balanceDue = roundMoney(
-        Math.max(0, total - newInitialPayment)
-      )
+      changes.balanceDue = roundMoney(Math.max(0, total - newInitialPayment))
       changes.paymentStatus = getPaymentSummary({
         ...order,
-        ...changes
+        ...changes,
       }).status
     }
 
@@ -391,34 +367,39 @@ const handleRegisterBalancePayment = async (order) => {
 
       setOrders((prev) =>
         prev.map((item) =>
-          item.id === order.id
-            ? { ...item, ...changes }
-            : item
-        )
+          item.id === order.id ? { ...item, ...changes } : item,
+        ),
       )
     } catch (error) {
       console.error('Error cambiando forma de pago:', error)
-      notify('No se pudo actualizar la forma de pago. Intenta nuevamente.', 'error')
+      notify(
+        'No se pudo actualizar la forma de pago. Intenta nuevamente.',
+        'error',
+      )
     }
   }
 
   const handleCancelOrder = async (order) => {
-    const reason = await askPrompt(
-      'Motivo de anulación del pedido:',
-      { confirmLabel: 'Anular pedido', danger: true, placeholder: 'Ej. el cliente canceló el pedido' }
-    )
+    const reason = await askPrompt('Motivo de anulación del pedido:', {
+      confirmLabel: 'Anular pedido',
+      danger: true,
+      placeholder: 'Ej. el cliente canceló el pedido',
+    })
 
     if (!reason) return
 
     const cancelledAt = new Date().toISOString()
-    const paymentStatus = getPaymentSummary({ ...order, status: 'anulado' }).status
+    const paymentStatus = getPaymentSummary({
+      ...order,
+      status: 'anulado',
+    }).status
 
     try {
       await updateDoc(doc(db, 'orders', order.id), {
         status: 'anulado',
         cancelReason: reason,
         paymentStatus,
-        cancelledAt
+        cancelledAt,
       })
 
       setOrders((prev) =>
@@ -429,10 +410,10 @@ const handleRegisterBalancePayment = async (order) => {
                 status: 'anulado',
                 cancelReason: reason,
                 paymentStatus,
-                cancelledAt
+                cancelledAt,
               }
-            : item
-        )
+            : item,
+        ),
       )
     } catch (error) {
       console.error('Error anulando pedido:', error)
@@ -449,54 +430,71 @@ const handleRegisterBalancePayment = async (order) => {
       `Esto va a ELIMINAR PERMANENTEMENTE el pedido de "${
         order.customerName || 'sin nombre'
       }".` +
-      (willRestock
-        ? ` Se devolverán ${order.quantity} unidad(es) al inventario del producto.`
-        : '') +
-      ' No se puede deshacer. ¿Continuar?',
-      { confirmLabel: 'Eliminar definitivamente', danger: true }
+        (willRestock
+          ? ` Se devolverán ${order.quantity} unidad(es) al inventario del producto.`
+          : '') +
+        ' No se puede deshacer. ¿Continuar?',
+      { confirmLabel: 'Eliminar definitivamente', danger: true },
     )
 
     if (!confirmed) return
 
     try {
-      if (willRestock) {
-        const productRef = doc(db, 'products', order.productId)
-        const productSnap = await getDoc(productRef)
-
-        if (productSnap.exists()) {
-          const currentStock = Number(productSnap.data().stock || 0)
-
-          await updateDoc(productRef, {
-            stock: currentStock + Number(order.quantity)
+      let deleted
+      await runTransaction(db, async (transaction) => {
+        const target = doc(db, 'orders', order.id)
+        const snapshot = await transaction.get(target)
+        if (!snapshot.exists()) return
+        deleted = snapshot.data()
+        const restock =
+          deleted.productId &&
+          (!deleted.garmentSource || deleted.garmentSource === 'inventory')
+        const productRef = restock
+          ? doc(db, 'products', deleted.productId)
+          : null
+        const productSnapshot = productRef
+          ? await transaction.get(productRef)
+          : null
+        if (productSnapshot?.exists())
+          transaction.update(productRef, {
+            stock:
+              Number(productSnapshot.data().stock || 0) +
+              Number(deleted.quantity),
           })
-        }
-      }
-
-      // Si el pedido tiene una vista previa subida a Firebase Storage,
-      // la borramos para no dejar imágenes huérfanas. Es una limpieza
-      // de mejor esfuerzo: si el archivo ya no existe o falla, no debe
-      // impedir que el pedido se elimine de Firestore.
-      if (order.previewPath || order.previewImage) {
-        try {
-          const previewRef = ref(
-            storage,
-            order.previewPath || order.previewImage
-          )
-
-          await deleteObject(previewRef)
-        } catch (storageError) {
-          console.warn(
-            'No se pudo eliminar la vista previa en Storage:',
-            storageError
-          )
-        }
-      }
-
-      await deleteDoc(doc(db, 'orders', order.id))
-
-      setOrders((prev) =>
-        prev.filter((item) => item.id !== order.id)
+        transaction.delete(target)
+      })
+      // Never delete catalog photographs reused by an order preview.
+      const imageUrls = deleted
+        ? [
+            deleted.previewPath,
+            deleted.previewImage,
+            ...(deleted.referenceImages || []),
+            ...Object.values(deleted.customerGarment?.images || {}),
+            ...(deleted.elements || [])
+              .filter((e) => e.type === 'image')
+              .map((e) => e.src),
+          ]
+        : []
+      await Promise.allSettled(
+        [...new Set(imageUrls.filter(Boolean))].map(async (url) => {
+          try {
+            const target = ref(storage, url)
+            if (
+              [
+                'orders',
+                'order-references',
+                'order-elements',
+                'customer-garments',
+              ].includes(target.fullPath.split('/')[0])
+            )
+              await deleteObject(target)
+          } catch {
+            /* Legacy external or already removed images need no cleanup. */
+          }
+        }),
       )
+
+      setOrders((prev) => prev.filter((item) => item.id !== order.id))
     } catch (error) {
       console.error('Error eliminando pedido:', error)
       notify('No se pudo eliminar el pedido. Intenta nuevamente.', 'error')
@@ -508,15 +506,14 @@ const handleRegisterBalancePayment = async (order) => {
     const message = `
 Hola ${order.customerName || ''},
 
-Tu pedido está en estado: ${
-      getStatusBadge(order.status).label
-    }
+Tu pedido está en estado: ${getStatusBadge(order.status).label}
 
 Detalle:
-Prenda: ${getProductName(order)}
-Talla: ${order.size || 'No definida'}
+${CATEGORIES[categoryOf(order)]}: ${getProductName(order)}
+${categoryOf(order) === 'prenda' ? `Talla: ${order.size || 'No definida'}` : ''}
 Cantidad: ${order.quantity || 0}
-Técnica: ${order.technique || 'No definida'}
+${categoryOf(order) === 'prenda' ? `Técnica: ${order.technique || 'No definida'}` : ''}
+${order.description ? `Descripción: ${order.description}` : ''}
 
 Situación de pago: ${payment.label}
 Total: Q${payment.total.toFixed(2)}
@@ -546,20 +543,13 @@ ${order.previewImage || 'No disponible'}
       String(order.customerName || '')
         .toLowerCase()
         .includes(searchText) ||
-      getProductName(order)
-        .toLowerCase()
-        .includes(searchText)
+      getProductName(order).toLowerCase().includes(searchText)
 
-    const matchesStatus =
-      statusFilter === '' ||
-      order.status === statusFilter
+    const matchesStatus = statusFilter === '' || order.status === statusFilter
 
-    const orderDate = localDateValue(
-      order.orderDate || order.createdAt
-    )
+    const orderDate = localDateValue(order.orderDate || order.createdAt)
 
-    const matchesDate =
-      !dateFilter || orderDate === dateFilter
+    const matchesDate = !dateFilter || orderDate === dateFilter
 
     return matchesSearch && matchesStatus && matchesDate
   })
@@ -570,19 +560,27 @@ ${order.previewImage || 'No disponible'}
         <h2 className="page-title">Historial de pedidos</h2>
 
         <div className="history-date-filter">
+          <label htmlFor="historyDateFilter">Filtrar por fecha</label>
           <input
             id="historyDateFilter"
             type="date"
             value={dateFilter}
             onChange={(event) => setDateFilter(event.target.value)}
           />
+          {dateFilter && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => setDateFilter('')}
+            >
+              Ver todos
+            </button>
+          )}
         </div>
       </div>
 
       {orders.length === 0 && (
-        <p className="text-muted">
-          No hay pedidos registrados.
-        </p>
+        <p className="text-muted">No hay pedidos registrados.</p>
       )}
 
       <div className="card p-3 mb-3">
@@ -593,9 +591,7 @@ ${order.previewImage || 'No disponible'}
               className="form-control"
               placeholder="Buscar por cliente o prenda..."
               value={search}
-              onChange={(event) =>
-                setSearch(event.target.value)
-              }
+              onChange={(event) => setSearch(event.target.value)}
             />
           </div>
 
@@ -603,24 +599,16 @@ ${order.previewImage || 'No disponible'}
             <select
               className="form-control"
               value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value)
-              }
+              onChange={(event) => setStatusFilter(event.target.value)}
             >
               <option value="">Todos los estados</option>
-              <option value="pendiente_aprobacion">
-                Pendiente
-              </option>
+              <option value="pendiente_aprobacion">Pendiente</option>
               <option value="aprobado">Aprobado</option>
-              <option value="en_produccion">
-                Producción
-              </option>
-              <option value="en_arreglo">
-                En arreglo / devolución
-              </option>
+              <option value="en_produccion">Producción</option>
+              <option value="en_arreglo">En arreglo / devolución</option>
               <option value="terminado">Terminado</option>
               <option value="entregado">Entregado</option>
-              <option value="anulado">Anulado</option>
+              {isAdmin && <option value="anulado">Anulado</option>}
             </select>
           </div>
         </div>
@@ -640,18 +628,29 @@ ${order.previewImage || 'No disponible'}
           >
             <div className="row g-0">
               <div className="col-md-3 p-2">
-                <img
-                  src={order.previewImage}
-                  className="img-fluid rounded history-order-image"
-                  alt="Vista previa del pedido"
-                />
+                {order.previewImage ? (
+                  <img
+                    src={order.previewImage}
+                    className="img-fluid rounded history-order-image"
+                    alt="Vista previa del pedido"
+                  />
+                ) : (
+                  <p className="text-muted p-3">Sin imágenes de referencia</p>
+                )}
               </div>
 
               <div className="col-md-9">
                 <div className="card-body">
                   <div className="history-card-heading">
-                    <h5 className="card-title">{getProductName(order)}</h5>
-                    <AIValidationPopover order={order} />
+                    <div>
+                      <span className="badge bg-secondary">
+                        {CATEGORIES[categoryOf(order)]}
+                      </span>
+                      <h5 className="card-title">{getProductName(order)}</h5>
+                    </div>
+                    {categoryOf(order) === 'prenda' && (
+                      <AIValidationPopover order={order} />
+                    )}
                   </div>
 
                   <div className="history-info-grid">
@@ -667,7 +666,7 @@ ${order.previewImage || 'No disponible'}
 
                     <div>
                       <span className="history-info-label">Talla</span>
-                      <strong>{order.size || 'No definida'}</strong>
+                      <strong>{order.size || 'No aplica'}</strong>
                     </div>
 
                     <div>
@@ -677,29 +676,77 @@ ${order.previewImage || 'No disponible'}
 
                     <div>
                       <span className="history-info-label">Técnica</span>
-                      <strong>{order.technique || 'No definida'}</strong>
+                      <strong>{order.technique || 'No aplica'}</strong>
                     </div>
                   </div>
 
-                  <div className="history-dates-row">
-                    <span><strong>Fecha del pedido:</strong> {displayOrderDate(order.orderDate || order.createdAt)}</span>
-                    <span><strong>Entrega prevista:</strong> {displayOrderDate(order.expectedDeliveryDate)}</span>
-                    <span><strong>Primera entrega real:</strong> {displayOrderDate(order.deliveredAt)}</span>
-                  </div>
-                  {Array.isArray(order.deliveryHistory) && order.deliveryHistory.length > 0 && (
-                    <details className="small mb-2">
-                      <summary>Historial de entregas ({order.deliveryHistory.length})</summary>
-                      <ul className="mt-2">
-                        {order.deliveryHistory.map((entry, index) => (
-                          <li key={index}>
-                            {displayOrderDate(entry.recordedAt)} — {entry.action === 'entrega_confirmada'
-                              ? 'Entrega confirmada'
-                              : `Pedido reabierto: ${entry.status || 'sin estado'}`}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
+                  {order.description && (
+                    <p className="mt-2">{order.description}</p>
                   )}
+                  {order.areaDetails && (
+                    <p>
+                      {Object.entries(order.areaDetails)
+                        .map(
+                          ([area, detail]) =>
+                            `${AREA_LABELS[area] || area}: ${detail.size}`,
+                        )
+                        .join(' · ')}
+                    </p>
+                  )}
+                  {order.referenceImages?.length > 0 && (
+                    <div className="d-flex gap-2 flex-wrap">
+                      {order.referenceImages.map((src, index) => (
+                        <a
+                          key={index}
+                          href={src}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <img
+                            src={src}
+                            alt={`Referencia ${index + 1}`}
+                            style={{
+                              width: 90,
+                              height: 90,
+                              objectFit: 'contain',
+                            }}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div className="history-dates-row">
+                    <span>
+                      <strong>Fecha del pedido:</strong>{' '}
+                      {displayOrderDate(order.orderDate || order.createdAt)}
+                    </span>
+                    <span>
+                      <strong>Entrega prevista:</strong>{' '}
+                      {displayOrderDate(order.expectedDeliveryDate)}
+                    </span>
+                    <span>
+                      <strong>Primera entrega real:</strong>{' '}
+                      {displayOrderDate(order.deliveredAt)}
+                    </span>
+                  </div>
+                  {Array.isArray(order.deliveryHistory) &&
+                    order.deliveryHistory.length > 0 && (
+                      <details className="small mb-2">
+                        <summary>
+                          Historial de entregas ({order.deliveryHistory.length})
+                        </summary>
+                        <ul className="mt-2">
+                          {order.deliveryHistory.map((entry, index) => (
+                            <li key={index}>
+                              {displayOrderDate(entry.recordedAt)} —{' '}
+                              {entry.action === 'entrega_confirmada'
+                                ? 'Entrega confirmada'
+                                : `Pedido reabierto: ${entry.status || 'sin estado'}`}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
 
                   <div className="history-quote-box">
                     <div className="history-quote-total">
@@ -711,11 +758,27 @@ ${order.previewImage || 'No disponible'}
                     </div>
 
                     <div className="history-quote-rows">
-                      <span><strong>Anticipo / pago inicial:</strong> Q{payment.initial.toFixed(2)}</span>
-                      <span><strong>Pago final:</strong> Q{payment.final.toFixed(2)}</span>
-                      <span><strong>Total pagado:</strong> Q{payment.paid.toFixed(2)}</span>
-                      <span className={payment.balance > 0 ? 'history-balance-due' : 'history-balance-clear'}>
-                        <strong>Saldo pendiente: Q{payment.balance.toFixed(2)}</strong>
+                      <span>
+                        <strong>Anticipo / pago inicial:</strong> Q
+                        {payment.initial.toFixed(2)}
+                      </span>
+                      <span>
+                        <strong>Pago final:</strong> Q{payment.final.toFixed(2)}
+                      </span>
+                      <span>
+                        <strong>Total pagado:</strong> Q
+                        {payment.paid.toFixed(2)}
+                      </span>
+                      <span
+                        className={
+                          payment.balance > 0
+                            ? 'history-balance-due'
+                            : 'history-balance-clear'
+                        }
+                      >
+                        <strong>
+                          Saldo pendiente: Q{payment.balance.toFixed(2)}
+                        </strong>
                       </span>
                     </div>
 
@@ -750,38 +813,23 @@ ${order.previewImage || 'No disponible'}
                       <select
                         id={`history-status-select-${order.id}`}
                         className="form-select form-select-sm"
-                        value={
-                          order.status || 'pendiente_aprobacion'
-                        }
+                        value={order.status || 'pendiente_aprobacion'}
                         disabled={isCancelled}
                         onChange={(event) =>
-                          handleChangeStatus(
-                            order.id,
-                            event.target.value
-                          )
+                          handleChangeStatus(order.id, event.target.value)
                         }
                       >
                         <option value="pendiente_aprobacion">
                           Pendiente de aprobación
                         </option>
-                        <option value="aprobado">
-                          Aprobado
-                        </option>
-                        <option value="en_produccion">
-                          En producción
-                        </option>
+                        <option value="aprobado">Aprobado</option>
+                        <option value="en_produccion">En producción</option>
                         <option value="en_arreglo">
                           En arreglo / devolución
                         </option>
-                        <option value="terminado">
-                          Terminado
-                        </option>
-                        <option value="entregado">
-                          Entregado
-                        </option>
-                        <option value="anulado">
-                          Anulado
-                        </option>
+                        <option value="terminado">Terminado</option>
+                        <option value="entregado">Entregado</option>
+                        {isAdmin && <option value="anulado">Anulado</option>}
                       </select>
                     </div>
                   </div>
@@ -802,11 +850,11 @@ ${order.previewImage || 'No disponible'}
                         } catch (error) {
                           console.error(
                             'Error generando el PDF del pedido:',
-                            error
+                            error,
                           )
                           notify(
                             'No se pudo generar el PDF del pedido',
-                            'error'
+                            'error',
                           )
                         }
                       }}
@@ -823,7 +871,7 @@ ${order.previewImage || 'No disponible'}
                         isCancelled
                           ? {
                               pointerEvents: 'none',
-                              opacity: 0.5
+                              opacity: 0.5,
                             }
                           : {}
                       }
@@ -836,8 +884,8 @@ ${order.previewImage || 'No disponible'}
                       onClick={() =>
                         navigate('/crearpedido', {
                           state: {
-                            orderToEdit: order
-                          }
+                            orderToEdit: order,
+                          },
                         })
                       }
                       disabled={isCancelled}
@@ -845,34 +893,35 @@ ${order.previewImage || 'No disponible'}
                       Editar datos
                     </button>
 
-                    <button
-                      className="btn btn-danger"
-                      onClick={() =>
-                        handleCancelOrder(order)
-                      }
-                      disabled={isCancelled}
-                    >
-                      Anular
-                    </button>
-
-                    {payment.balance > 0 &&
-                      ['aprobado', 'en_produccion', 'en_arreglo', 'terminado'].includes(order.status) && (
+                    {isAdmin && (
                       <button
-                        className="btn btn-dark"
-                        onClick={() =>
-                          handleRegisterBalancePayment(order)
-                        }
+                        className="btn btn-danger"
+                        onClick={() => handleCancelOrder(order)}
+                        disabled={isCancelled}
                       >
-                        Registrar saldo y entregar
+                        Anular
                       </button>
                     )}
+
+                    {payment.balance > 0 &&
+                      [
+                        'aprobado',
+                        'en_produccion',
+                        'en_arreglo',
+                        'terminado',
+                      ].includes(order.status) && (
+                        <button
+                          className="btn btn-dark"
+                          onClick={() => handleRegisterBalancePayment(order)}
+                        >
+                          Registrar saldo y entregar
+                        </button>
+                      )}
 
                     {isAdmin && (
                       <button
                         className="btn btn-outline-danger"
-                        onClick={() =>
-                          handleDeleteOrder(order)
-                        }
+                        onClick={() => handleDeleteOrder(order)}
                       >
                         Eliminar pedido
                       </button>

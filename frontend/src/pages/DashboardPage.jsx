@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import '../styles/DashboardPage.css'
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -238,6 +238,11 @@ function DashboardPage() {
   const [pickerYear, setPickerYear] = useState(
     () => new Date().getFullYear()
   )
+  const [summaryStartDate, setSummaryStartDate] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  })
+  const [summaryEndDate, setSummaryEndDate] = useState(() => toDateKey(new Date()))
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -271,7 +276,12 @@ function DashboardPage() {
       ? user.email.split('@')[0]
       : 'usuario'
 
-  const total = orders.length
+  const summaryOrders = useMemo(() => orders.filter((order) => {
+    const date = toDateKey(order.orderDate || order.createdAt)
+    return date && (!summaryStartDate || date >= summaryStartDate) && (!summaryEndDate || date <= summaryEndDate)
+  }), [orders, summaryStartDate, summaryEndDate])
+
+  const total = summaryOrders.length
 
   const statusCounts = useMemo(() => {
     const counts = {}
@@ -280,7 +290,7 @@ function DashboardPage() {
       counts[card.key] = 0
     })
 
-    orders.forEach((order) => {
+    summaryOrders.forEach((order) => {
       const status = order.status || 'pendiente_aprobacion'
 
       if (counts[status] !== undefined) {
@@ -289,12 +299,12 @@ function DashboardPage() {
     })
 
     return counts
-  }, [orders])
+  }, [summaryOrders])
 
   const economicSummary = useMemo(() => {
     // Solo lo aprobado en adelante representa dinero real: un pedido
     // pendiente de aprobación todavía no compromete ningún cobro.
-    const approvedOrders = orders.filter((order) =>
+    const approvedOrders = summaryOrders.filter((order) =>
       APPROVED_ONWARD_STATUSES.includes(order.status)
     )
 
@@ -309,7 +319,7 @@ function DashboardPage() {
     )
 
     return { quotedTotal, pendingBalance }
-  }, [orders])
+  }, [summaryOrders])
 
   const ordersByDay = useMemo(() => {
     const map = {}
@@ -415,6 +425,18 @@ function DashboardPage() {
       {loadError && (
         <div className="alert alert-danger">{loadError}</div>
       )}
+
+      <div className="dashboard-summary-filter" aria-label="Filtrar resumen por fechas">
+        <strong>Resumen de pedidos</strong>
+        <label>
+          Desde
+          <input type="date" value={summaryStartDate} onChange={(event) => setSummaryStartDate(event.target.value)} />
+        </label>
+        <label>
+          Hasta
+          <input type="date" value={summaryEndDate} onChange={(event) => setSummaryEndDate(event.target.value)} />
+        </label>
+      </div>
 
       <div className="econ-grid">
         <div className="econ-card">

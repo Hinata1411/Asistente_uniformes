@@ -2,24 +2,31 @@ import { notify } from '../../services/toastStore'
 
 function CustomerGarmentPreview({
   form,
+  images,
   onImageChange
 }) {
-  const handleImageUpload = (event) => {
+  const handleImageUpload = (side, event) => {
     const file = event.target.files?.[0]
 
     if (!file) {
       return
     }
 
-    if (!file.type.startsWith('image/')) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       notify('Selecciona un archivo de imagen válido.', 'warning')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      notify('Cada fotografía debe pesar menos de 5 MB.', 'warning')
+      event.target.value = ''
       return
     }
 
     const reader = new FileReader()
 
     reader.onload = () => {
-      onImageChange(reader.result)
+      onImageChange(side, reader.result)
     }
 
     reader.readAsDataURL(file)
@@ -28,22 +35,35 @@ function CustomerGarmentPreview({
   return (
     <div className="customer-garment-preview">
 
-      <div className="mb-3">
+      <div className="row g-3 mb-3">
+        <div className="col-12 col-md-6">
         <label className="form-label">
-          Fotografía de la prenda
+          Fotografía de frente
         </label>
 
         <input
           type="file"
           className="form-control"
-          accept="image/*"
-          onChange={handleImageUpload}
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(event) => handleImageUpload('front', event)}
         />
+        {images?.front && <img src={images.front} alt="Vista previa de la prenda de frente" className="img-thumbnail mt-2" style={{ maxHeight: 150 }} />}
+        </div>
 
+        <div className="col-12 col-md-6">
+          <label className="form-label">
+            Fotografía de espalda
+          </label>
+          <input
+            type="file"
+            className="form-control"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => handleImageUpload('back', event)}
+          />
+          {images?.back && <img src={images.back} alt="Vista previa de la prenda de espalda" className="img-thumbnail mt-2" style={{ maxHeight: 150 }} />}
+        </div>
         <div className="form-text mt-2">
-          Sube una fotografía clara de la prenda proporcionada
-          por el cliente para utilizarla como base de la
-          personalización.
+          Si personalizarás ambos lados, carga una foto diferente de frente y otra de espalda.
         </div>
       </div>
 

@@ -9,7 +9,7 @@ import {
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 
 import { auth, db } from '../firebase/config'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 
 import './../styles/ProfilePage.css'
 

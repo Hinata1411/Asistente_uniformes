@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  collection,
-  getDocs
-} from 'firebase/firestore'
+import { collection, getDocs, onSnapshot } from 'firebase/firestore'
 
 import { db } from '../../firebase/config'
 
@@ -12,169 +9,99 @@ const normalizeKey = (value) =>
     .toLowerCase()
 
 const findField = (data, expectedKey) => {
-  const normalizedExpected =
-    normalizeKey(expectedKey)
+  const normalizedExpected = normalizeKey(expectedKey)
 
   const matchingKey = Object.keys(data).find(
-    (key) =>
-      normalizeKey(key) ===
-      normalizedExpected
+    (key) => normalizeKey(key) === normalizedExpected,
   )
 
-  return matchingKey
-    ? data[matchingKey]
-    : undefined
+  return matchingKey ? data[matchingKey] : undefined
 }
 
 const normalizeProduct = (document) => {
   const data = document.data()
 
-  const rawSizes =
-    findField(data, 'sizes')
+  const rawSizes = findField(data, 'sizes')
 
-  const rawTechniques =
-    findField(
-      data,
-      'allowedTechniques'
-    )
+  const rawTechniques = findField(data, 'allowedTechniques')
 
-  const rawSides =
-    findField(
-      data,
-      'availableSides'
-    )
+  const rawSides = findField(data, 'availableSides')
 
-  const rawFrontImage =
-    findField(
-      data,
-      'frontImage'
-    )
+  const rawFrontImage = findField(data, 'frontImage')
 
-  const rawBackImage =
-    findField(
-      data,
-      'backImage'
-    )
+  const rawBackImage = findField(data, 'backImage')
 
   const normalizedProduct = {
     id: document.id,
+    category: data.category || 'prenda',
 
-    name:
-      data.name || 'Producto sin nombre',
+    name: data.name || 'Producto sin nombre',
 
-    type:
-      data.type || '',
+    type: data.type || '',
 
-    color:
-      data.color || '',
+    color: data.color || '',
 
-    active:
-      data.active ?? true,
+    active: data.active ?? true,
 
-    basePrice:
-      Number(data.basePrice || 0),
+    basePrice: Number(data.basePrice || 0),
 
-    price:
-      Number(data.price ?? data.basePrice ?? 0),
+    price: Number(data.price ?? data.basePrice ?? 0),
 
-    stock:
-      Number(data.stock || 0),
+    stock: Number(data.stock || 0),
 
-    size:
-      data.size || (Array.isArray(rawSizes) ? rawSizes[0] || '' : ''),
+    size: data.size || (Array.isArray(rawSizes) ? rawSizes[0] || '' : ''),
 
     legacyMultiSize:
       !data.size && Array.isArray(rawSizes) && rawSizes.length > 1,
 
-    sizes:
-      data.size
-        ? [data.size]
-        : Array.isArray(rawSizes)
-          ? rawSizes.slice(0, 1)
-          : [],
-
-    allowedTechniques:
-      Array.isArray(rawTechniques)
-        ? [...rawTechniques]
+    sizes: data.size
+      ? [data.size]
+      : Array.isArray(rawSizes)
+        ? rawSizes.slice(0, 1)
         : [],
 
-    availableSides:
-      Array.isArray(rawSides)
-        ? [...rawSides]
-        : [],
+    allowedTechniques: Array.isArray(rawTechniques) ? [...rawTechniques] : [],
 
-    frontImage:
-      rawFrontImage || '',
+    availableSides: Array.isArray(rawSides) ? [...rawSides] : [],
 
-    backImage:
-      rawBackImage || '',
+    frontImage: rawFrontImage || '',
+
+    backImage: rawBackImage || '',
 
     images: {
-      frente:
-        data.images?.frente ||
-        rawFrontImage ||
-        '',
+      ...data.images,
+      frente: data.images?.frente || rawFrontImage || '',
 
-      espalda:
-        data.images?.espalda ||
-        rawBackImage ||
-        ''
+      espalda: data.images?.espalda || rawBackImage || '',
     },
 
-    createdAt:
-      data.createdAt || ''
+    createdAt: data.createdAt || '',
   }
 
   return normalizedProduct
 }
 
 function useInventoryProducts() {
-  const [
-    inventoryProducts,
-    setInventoryProducts
-  ] = useState([])
+  const [inventoryProducts, setInventoryProducts] = useState([])
 
-  const [
-    loadingProducts,
-    setLoadingProducts
-  ] = useState(true)
+  const [loadingProducts, setLoadingProducts] = useState(true)
 
-  const [
-    productsError,
-    setProductsError
-  ] = useState(null)
+  const [productsError, setProductsError] = useState(null)
 
   const loadProducts = async () => {
     try {
       setLoadingProducts(true)
       setProductsError(null)
 
-      const snapshot =
-        await getDocs(
-          collection(
-            db,
-            'products'
-          )
-        )
+      const snapshot = await getDocs(collection(db, 'products'))
 
-      const productsData =
-        snapshot.docs
-          .map(
-            normalizeProduct
-          )
-          .filter(
-            (product) =>
-              product.active !== false
-          )
+      const productsData = snapshot.docs
+        .map(normalizeProduct)
+        .filter((product) => product.active !== false)
 
-      setInventoryProducts(
-        productsData
-      )
+      setInventoryProducts(productsData)
     } catch (error) {
-      console.error(
-        'Error cargando inventario:',
-        error
-      )
+      console.error('Error cargando inventario:', error)
 
       setProductsError(error)
     } finally {
@@ -182,16 +109,33 @@ function useInventoryProducts() {
     }
   }
 
-  useEffect(() => {
-    loadProducts()
-  }, [])
+  useEffect(
+    () =>
+      onSnapshot(
+        collection(db, 'products'),
+        (snapshot) => {
+          setInventoryProducts(
+            snapshot.docs
+              .map(normalizeProduct)
+              .filter((product) => product.active !== false),
+          )
+          setProductsError(null)
+          setLoadingProducts(false)
+        },
+        (error) => {
+          setProductsError(error)
+          setLoadingProducts(false)
+        },
+      ),
+    [],
+  )
 
   return {
     inventoryProducts,
     setInventoryProducts,
     loadingProducts,
     productsError,
-    reloadProducts: loadProducts
+    reloadProducts: loadProducts,
   }
 }
 

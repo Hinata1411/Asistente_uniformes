@@ -1,2116 +1,903 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import useInventoryProducts from '../hooks/orders/useInventoryProducts'
-
-import { auth, db, storage } from '../firebase/config'
 import { getIdToken } from 'firebase/auth'
-
-import {
-  collection,
-  addDoc,
-  doc,
-  runTransaction
-} from 'firebase/firestore'
-
-import {
-  ref,
-  uploadString,
-  getDownloadURL,
-  deleteObject
-} from 'firebase/storage'
-
+import { auth } from '../firebase/config'
+import useInventoryProducts from '../hooks/orders/useInventoryProducts'
 import GarmentEditor from '../components/GarmentEditor'
-import CustomerGarmentForm from '../components/orders/CustomerGarmentForm'
-import InventoryGarmentForm from '../components/orders/InventoryGarmentForm'
-import GarmentSourceSelector from '../components/orders/GarmentSourceSelector'
-import CustomerGarmentPreview from '../components/orders/CustomerGarmentPreview'
+import OrderAIValidationDetails from '../components/OrderAIValidationDetails'
 import { notify } from '../services/toastStore'
-
+import {
+  CATEGORIES,
+  categoryOf,
+  AREA_OPTIONS,
+  AREA_LABELS,
+  areaKeys,
+  imageKey,
+  money,
+  validAmount,
+  today,
+} from '../services/businessModel'
+import { localDateValue } from '../services/orderFormatting'
+import { readImage, persistImage, cleanUploads } from '../services/imageFiles'
+import { saveBusinessOrder } from '../services/businessOrders'
 import '../styles/CreateOrderPage.css'
+import '../styles/BusinessPages.css'
 
-const localDateValue = (value) => {
-  if (!value) return ''
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const parsed = new Date(`${value}T12:00:00`)
-    if (!Number.isFinite(parsed.getTime())) return ''
-    const normalized = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
-    return normalized === value ? value : ''
+const emptyImages = { front: '', back: '', leftSleeve: '', rightSleeve: '' }
+function getInitial(order) {
+  return {
+    category: order ? categoryOf(order) : '',
+    customerName: order?.customerName || '',
+    phone: order?.phone || '',
+    orderDate: localDateValue(order?.orderDate || order?.createdAt) || today(),
+    expectedDeliveryDate: localDateValue(order?.expectedDeliveryDate),
+    garmentSource: order?.garmentSource || 'inventory',
+    productId: order?.productId || '',
+    size: order?.size || '',
+    quantity: order?.quantity || 1,
+    technique: order?.technique || '',
+    customizationSide: order?.customizationSide || '',
+    unitBasePrice:
+      order?.unitBasePrice != null ? String(order.unitBasePrice) : '',
+    paymentPlan: order?.paymentPlan || 'anticipo_50',
+    description:
+      order?.description || order?.customerGarment?.description || '',
+    customerGarmentType: order?.customerGarment?.type || '',
+    customerGarmentColor: order?.customerGarment?.color || '',
+    title: order?.productName || '',
+    personalizationSize: order?.personalizationSize || '',
   }
-  try {
-    const date = typeof value.toDate === 'function'
-      ? value.toDate()
-      : value.seconds != null
-        ? new Date(value.seconds * 1000)
-        : new Date(value)
-    if (!Number.isFinite(date.getTime())) return ''
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-  } catch { return '' }
 }
-
-const isValidMoneyInput = (value) =>
-  value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0
-
-function CreateOrderPage() {
+export default function CreateOrderPage() {
   const location = useLocation()
-  const navigate = useNavigate()
-
-  const [editingOrder, setEditingOrder] = useState(null)
-  const [aiResult, setAiResult] = useState(null)
-  const [loadingAI, setLoadingAI] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const garmentEditorRef = useRef(null)
-  const [previewBase64, setPreviewBase64] = useState('')
-  const [editorElements, setEditorElements] = useState([])
-
-  /*
-    Guarda la última versión de "elements" que el editor ya nos
-    avisó, para poder detectar un cambio REAL hecho por la persona
-    (y ahí sí invalidar la validación de IA guardada). El editor
-    puede volver a avisar los mismos elementos sin que nada haya
-    cambiado (por ejemplo al hidratar el diseño guardado al entrar
-    a editar un pedido); si comparáramos siempre contra
-    editingOrder.elements, cada uno de esos avisos repetidos volvía
-    a "detectar" una diferencia y borraba la validación justo
-    después de generarla.
-  */
-  const lastNotifiedElementsRef = useRef([])
-  const [customerGarmentImages, setCustomerGarmentImages] = useState({ front: '', back: '' })
-  const customerGarmentImage = customerGarmentImages.front || customerGarmentImages.back
-  const {
-    inventoryProducts,
-    loadingProducts,
-    productsError,
-    reloadProducts
-  } = useInventoryProducts()
-
-  const initialForm = {
-    garmentSource: 'inventory',
-
-    orderDate: localDateValue(new Date()),
-    expectedDeliveryDate: '',
-    customerName: '',
-    phone: '',
-
-    productId: '',
-
-    customerGarmentType: '',
-    customerGarmentDescription: '',
-    customerGarmentColor: '',
-    customerGarmentPrice: '',
-
-    size: '',
-    quantity: 1,
-    technique: '',
-    customizationSide: '',
-
-    personalizationSize: '',
-    personalizationSizeBack: '',
-    personalizationSurchargeFrontInput: '',
-    personalizationSurchargeBackInput: '',
-    paymentPlan: 'anticipo_50'
-  }
-
-  const [form, setForm] = useState(initialForm)
-
-  const selectedProduct = inventoryProducts.find(
-    (item) => item.id === form.productId
-  )
-
-  const isInventoryGarment =
-    form.garmentSource === 'inventory'
-
-  const isCustomerGarment =
-    form.garmentSource === 'customer'
-
-  // =========================================
-  // COTIZACIÓN (se recalcula en cada render)
-  // =========================================
-
-  const quantityForQuote = Number(form.quantity) || 0
-
-  // Para una prenda del cliente también se registra el monto base
-  // acordado; el recargo de personalización se agrega por unidad.
-  const unitBasePrice = isInventoryGarment
-    ? Number(selectedProduct?.price || 0)
-    : Number(form.customerGarmentPrice || 0)
-
-  const isBothSides =
-    form.customizationSide === 'ambos'
-
-  const hasRequiredCustomerGarmentImages =
-    form.customizationSide === 'ambos'
-      ? Boolean(customerGarmentImages.front && customerGarmentImages.back)
-      : form.customizationSide === 'espalda'
-        ? Boolean(customerGarmentImages.back)
-        : Boolean(customerGarmentImages.front)
-
-  const personalizationSurchargeFront = Math.max(
-    0,
-    Number(form.personalizationSurchargeFrontInput || 0)
-  )
-
-  const personalizationSurchargeBack = isBothSides
-    ? Math.max(0, Number(form.personalizationSurchargeBackInput || 0))
-    : 0
-
-  const personalizationSurcharge =
-    personalizationSurchargeFront + personalizationSurchargeBack
-
-  const unitPrice = unitBasePrice + personalizationSurcharge
-
-  const quoteTotal = unitPrice * quantityForQuote
-
-  const depositPaid =
-    form.paymentPlan === 'completo'
-      ? quoteTotal
-      : Math.round(quoteTotal * 0.5 * 100) / 100
-
-  const balanceDue =
-    Math.round((quoteTotal - depositPaid) * 100) / 100
-
-  useEffect(() => {
-    if (location.state?.orderToEdit) {
-      const order = location.state.orderToEdit
-
-      setForm({
-        orderDate: localDateValue(order.orderDate) || localDateValue(order.createdAt),
-        expectedDeliveryDate: localDateValue(order.expectedDeliveryDate),
-        garmentSource:
-          order.garmentSource || 'inventory',
-
-        customerName:
-          order.customerName || '',
-
-        phone:
-          order.phone || '',
-
-        productId:
-          order.productId || '',
-
-        customerGarmentType:
-          order.customerGarment?.type || '',
-
-        customerGarmentDescription:
-          order.customerGarment?.description || '',
-
-        customerGarmentColor:
-          order.customerGarment?.color || '',
-
-        customerGarmentPrice:
-          order.garmentSource === 'customer' &&
-          order.unitBasePrice != null
-            ? String(order.unitBasePrice)
-            : '',
-
-        size:
-          order.size || '',
-
-        quantity:
-          order.quantity || 1,
-
-        technique:
-          order.technique || '',
-
-        customizationSide:
-          order.customizationSide || '',
-
-        personalizationSize:
-          order.personalizationSize || '',
-
-        personalizationSizeBack:
-          order.personalizationSizeBack || '',
-
-        personalizationSurchargeFrontInput:
-          String(order.personalizationSurchargeFront ?? order.personalizationSurcharge ?? ''),
-
-        personalizationSurchargeBackInput:
-          String(order.personalizationSurchargeBack ?? ''),
-
-        paymentPlan:
-          order.paymentPlan || 'anticipo_50'
-      })
-
-      setCustomerGarmentImages({
-        front: order.customerGarment?.images?.front || order.customerGarmentImage || '',
-        back: order.customerGarment?.images?.back || order.customerGarmentImage || ''
-      })
-
-      setEditingOrder(order)
-      setAiResult(
-        order.aiValidation || null
-      )
-      setEditorElements(
-        order.elements || []
-      )
-      lastNotifiedElementsRef.current =
-        order.elements || []
-
-      window.scrollTo(0, 0)
-    }
-  }, [location.state])
-
-  const resetForm = () => {
-    setForm({ ...initialForm, orderDate: localDateValue(new Date()) })
-    setAiResult(null)
-    setPreviewBase64('')
-    setEditorElements([])
-    lastNotifiedElementsRef.current = []
-    setCustomerGarmentImages({ front: '', back: '' })
-    setEditingOrder(null)
-  }
-
-  const persistCustomerGarmentImage = async (image, side) => {
-    if (!image) return ''
-    if (!image.startsWith('data:')) return image
-
-    const path = `customer-garments/${crypto.randomUUID()}-${side}.png`
-    const imageRef = ref(storage, path)
-    await uploadString(imageRef, image, 'data_url')
-    return getDownloadURL(imageRef)
-  }
-
-  const handleSaveOrder = async (order) => {
-    // Evita duplicar el pedido si el botón se presiona varias veces
-    // mientras la operación anterior todavía se está guardando.
-    if (isSaving) return
-
-    setIsSaving(true)
-
-  try {
-    if (!localDateValue(form.orderDate) || !localDateValue(form.expectedDeliveryDate)) {
-      notify('Indica una fecha válida de toma del pedido y de entrega prevista.', 'warning')
-      return
-    }
-    if (form.expectedDeliveryDate < form.orderDate) {
-      notify('La entrega prevista no puede ser anterior a la toma del pedido.', 'warning')
-      return
-    }
-
-    const requestedQuantity =
-      Number(form.quantity)
-
-    // =========================================
-    // VALIDACIONES GENERALES
-    // =========================================
-
-    if (
-      !form.customerName ||
-      !form.phone ||
-      !form.size ||
-      !form.technique ||
-      !form.customizationSide
-    ) {
-      notify(
-        'Completa todos los datos del pedido',
-        'warning'
-      )
-      return
-    }
-
-    if (!/^[\p{L}\s'-]+$/u.test(form.customerName.trim())) {
-      notify(
-        'El nombre del cliente solo puede contener letras, sin números.',
-        'warning'
-      )
-      return
-    }
-
-    if (!/^\d{7,8}$/.test(form.phone)) {
-      notify(
-        'El teléfono debe contener solo números (7 u 8 dígitos), sin letras ni espacios.',
-        'warning'
-      )
-      return
-    }
-
-    if (
-      isInventoryGarment &&
-      !form.productId
-    ) {
-      notify(
-        'Selecciona un producto del inventario',
-        'warning'
-      )
-      return
-    }
-
-    if (
-      isInventoryGarment &&
-      !selectedProduct
-    ) {
-      notify(
-        'Selecciona un producto válido del inventario',
-        'warning'
-      )
-      return
-    }
-
-    if (
-      isCustomerGarment &&
-      (
-        !form.customerGarmentType ||
-        !form.customerGarmentColor ||
-        !hasRequiredCustomerGarmentImages
-      )
-    ) {
-      notify(
-        'Completa los datos de la prenda del cliente y carga una fotografía',
-        'warning'
-      )
-      return
-    }
-
-    /* El precio unitario de la prenda del cliente también forma parte de la cotización. */
-    if (
-      isInventoryGarment &&
-      unitBasePrice <= 0
-    ) {
-      notify(
-        'El producto seleccionado no tiene precio configurado. Definilo en Productos antes de continuar.',
-        'warning'
-      )
-      return
-    }
-
-    if (
-      isCustomerGarment &&
-      !isValidMoneyInput(form.customerGarmentPrice)
-    ) {
-      notify('Ingresa un monto válido para la prenda proporcionada por el cliente (puede ser Q0.00).', 'warning')
-      return
-    }
-
-    if (!form.personalizationSize.trim() || !isValidMoneyInput(form.personalizationSurchargeFrontInput) || (isBothSides && (!form.personalizationSizeBack.trim() || !isValidMoneyInput(form.personalizationSurchargeBackInput)))) {
-      notify('Ingresa el tamaño y recargo de personalización para cada lado usado.', 'warning')
-      return
-    }
-
-    if (
-      !requestedQuantity ||
-      requestedQuantity <= 0
-    ) {
-      notify(
-        'La cantidad debe ser mayor a 0',
-        'warning'
-      )
-      return
-    }
-
-    if (
-      isInventoryGarment &&
-      requestedQuantity >
-        Number(selectedProduct.stock || 0)
-    ) {
-      /*
-        Esta validación es útil como aviso rápido.
-
-        La transacción volverá a comprobar el stock
-        real antes de guardar.
-      */
-      if (!editingOrder) {
-        notify(
-          `La cantidad solicitada supera el stock disponible (${selectedProduct.stock})`,
-          'warning'
-        )
-        return
-      }
-    }
-
-    if (!order?.previewImage) {
-      notify(
-        'Debes generar una vista previa de la prenda',
-        'warning'
-      )
-      return
-    }
-
-    if (!aiResult) {
-      notify(
-        'Debes validar el pedido con IA antes de guardarlo',
-        'warning'
-      )
-      return
-    }
-
-    const orderElements =
-      order.elements ||
-      editorElements ||
-      []
-
-    const savedCustomerGarmentImages = isCustomerGarment
-      ? {
-          front: await persistCustomerGarmentImage(customerGarmentImages.front, 'front'),
-          back: await persistCustomerGarmentImage(customerGarmentImages.back, 'back')
-        }
-      : null
-
-    // =========================================
-    // DATOS DE LA PRENDA
-    // =========================================
-
-    const garmentData = {
-      garmentSource:
-        form.garmentSource,
-
-      productId:
-        isInventoryGarment
-          ? selectedProduct.id
-          : null,
-
-      productName:
-        isInventoryGarment
-          ? selectedProduct.name
-          : form.customerGarmentDescription ||
-            form.customerGarmentType,
-
-      productType:
-        isInventoryGarment
-          ? selectedProduct.type
-          : form.customerGarmentType,
-
-      productColor:
-        isInventoryGarment
-          ? selectedProduct.color
-          : form.customerGarmentColor,
-
-      customerGarment:
-        isCustomerGarment
-          ? {
-              type:
-                form.customerGarmentType,
-
-              description:
-                form.customerGarmentDescription,
-
-              color:
-                form.customerGarmentColor,
-
-              images:
-                savedCustomerGarmentImages
-            }
-          : null
-    }
-
-    // =========================================
-    // EDITAR PEDIDO EXISTENTE
-    // =========================================
-
-    if (editingOrder) {
-      const oldProductId =
-        editingOrder.productId || null
-
-      const oldQuantity =
-        Number(
-          editingOrder.quantity || 0
-        )
-
-      /*
-        También soportamos pedidos antiguos que
-        todavía no tenían garmentSource pero sí
-        tenían productId.
-      */
-      const oldIsInventory =
-        Boolean(oldProductId) &&
-        (
-          editingOrder.garmentSource ===
-            'inventory' ||
-          !editingOrder.garmentSource
-        )
-
-      const newProductId =
-        isInventoryGarment
-          ? selectedProduct.id
-          : null
-
-      /*
-        Subir la vista previa actualizada del editor ANTES de la
-        transacción (igual que al crear un pedido nuevo). Si no se
-        hace esto, el diseño editado se guarda pero el historial,
-        el mensaje de WhatsApp y el PDF siguen mostrando la imagen
-        vieja de antes de editar.
-      */
-      const previewPath =
-        `orders/${Date.now()}.png`
-
-      const previewStorageRef =
-        ref(
-          storage,
-          previewPath
-        )
-
-      await uploadString(
-        previewStorageRef,
-        order.previewImage,
-        'data_url'
-      )
-
-      const previewImageUrl =
-        await getDownloadURL(
-          previewStorageRef
-        )
-
-      /*
-        No se debe pisar el dinero que ya se registró como pagado.
-        depositPaid/finalPaymentPaid representan pagos CONFIRMADOS
-        (se controlan desde el historial al aprobar/entregar un
-        pedido); si aquí los recalculábamos como el 50%/100% de la
-        cotización editada, una edición de talla/cantidad/técnica
-        borraba el pago inicial o final ya confirmado y el estado de
-        pago del pedido quedaba mal.
-      */
-      const actualPaidSoFar =
-        Number(editingOrder.depositPaid || 0) +
-        Number(editingOrder.finalPaymentPaid || 0)
-
-      const recalculatedBalanceDue =
-        Math.round(
-          Math.max(0, quoteTotal - actualPaidSoFar) * 100
-        ) / 100
-
-      // El "anticipo previsto" (referencia para cuando se apruebe)
-      // solo se actualiza con la nueva cotización si todavía no se
-      // ha confirmado ningún pago.
-      const nextInitialPaymentAmount =
-        actualPaidSoFar > 0
-          ? (editingOrder.initialPaymentAmount ?? editingOrder.depositPaid ?? depositPaid)
-          : depositPaid
-
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const orderRef =
-            doc(
-              db,
-              'orders',
-              editingOrder.id
-            )
-
-          const oldProductRef =
-            oldIsInventory
-              ? doc(
-                  db,
-                  'products',
-                  oldProductId
-                )
-              : null
-
-          const newProductRef =
-            isInventoryGarment
-              ? doc(
-                  db,
-                  'products',
-                  newProductId
-                )
-              : null
-
-          let oldProductSnap = null
-          let newProductSnap = null
-
-          // =====================================
-          // LEER PRODUCTOS ANTES DE ESCRIBIR
-          // =====================================
-
-          if (
-            oldProductRef &&
-            newProductRef &&
-            oldProductId === newProductId
-          ) {
-            oldProductSnap =
-              await transaction.get(
-                oldProductRef
-              )
-
-            newProductSnap =
-              oldProductSnap
-          } else {
-            if (oldProductRef) {
-              oldProductSnap =
-                await transaction.get(
-                  oldProductRef
-                )
-            }
-
-            if (newProductRef) {
-              newProductSnap =
-                await transaction.get(
-                  newProductRef
-                )
-            }
-          }
-
-          // =====================================
-          // MISMO PRODUCTO DE INVENTARIO
-          // =====================================
-
-          if (
-            oldIsInventory &&
-            isInventoryGarment &&
-            oldProductId === newProductId
-          ) {
-            if (!newProductSnap?.exists()) {
-              throw new Error(
-                'El producto del inventario ya no existe.'
-              )
-            }
-
-            const currentStock =
-              Number(
-                newProductSnap.data()
-                  .stock || 0
-              )
-
-            /*
-              Si antes pedía 2 y ahora pide 4:
-              necesitamos descontar únicamente 2.
-
-              Si antes pedía 4 y ahora pide 2:
-              devolvemos 2 al inventario.
-            */
-            const difference =
-              requestedQuantity -
-              oldQuantity
-
-            if (
-              difference > 0 &&
-              difference > currentStock
-            ) {
-              throw new Error(
-                `Stock insuficiente. Solo hay ${currentStock} unidades adicionales disponibles.`
-              )
-            }
-
-            const newStock =
-              currentStock -
-              difference
-
-            if (newStock < 0) {
-              throw new Error(
-                'El stock no puede quedar negativo.'
-              )
-            }
-
-            transaction.update(
-              newProductRef,
-              {
-                stock: newStock
-              }
-            )
-          }
-
-          // =====================================
-          // CAMBIÓ DE PRODUCTO O DE ORIGEN
-          // =====================================
-
-          else {
-            /*
-              Si el pedido anterior utilizaba
-              inventario, devolvemos su cantidad.
-            */
-            if (
-              oldIsInventory &&
-              oldProductRef
-            ) {
-              if (
-                !oldProductSnap?.exists()
-              ) {
-                throw new Error(
-                  'El producto anterior ya no existe en inventario.'
-                )
-              }
-
-              const oldCurrentStock =
-                Number(
-                  oldProductSnap.data()
-                    .stock || 0
-                )
-
-              transaction.update(
-                oldProductRef,
-                {
-                  stock:
-                    oldCurrentStock +
-                    oldQuantity
-                }
-              )
-            }
-
-            /*
-              Si el pedido nuevo utiliza inventario,
-              descontamos la nueva cantidad.
-            */
-            if (
-              isInventoryGarment &&
-              newProductRef
-            ) {
-              if (
-                !newProductSnap?.exists()
-              ) {
-                throw new Error(
-                  'El producto seleccionado no existe en inventario.'
-                )
-              }
-
-              const newCurrentStock =
-                Number(
-                  newProductSnap.data()
-                    .stock || 0
-                )
-
-              if (
-                requestedQuantity >
-                newCurrentStock
-              ) {
-                throw new Error(
-                  `Stock insuficiente. Solo hay ${newCurrentStock} unidades disponibles.`
-                )
-              }
-
-              transaction.update(
-                newProductRef,
-                {
-                  stock:
-                    newCurrentStock -
-                    requestedQuantity
-                }
-              )
-            }
-          }
-
-          // =====================================
-          // ACTUALIZAR PEDIDO
-          // =====================================
-
-          transaction.update(
-            orderRef,
-            {
-              orderDate: form.orderDate,
-              expectedDeliveryDate: form.expectedDeliveryDate,
-              customerName:
-                form.customerName,
-
-              phone:
-                form.phone,
-
-              ...garmentData,
-
-              size:
-                form.size,
-
-              quantity:
-                requestedQuantity,
-
-              technique:
-                form.technique,
-
-              customizationSide:
-                form.customizationSide,
-
-              elements:
-                orderElements,
-
-              previewImage:
-                previewImageUrl,
-
-              previewPath,
-
-              aiValidation:
-                aiResult,
-
-              aiValidatedAt:
-                new Date().toISOString(),
-
-              unitBasePrice,
-
-              personalizationSize:
-                form.personalizationSize,
-
-              personalizationSizeBack:
-                isBothSides ? form.personalizationSizeBack : null,
-
-              personalizationSurchargeFront,
-
-              personalizationSurchargeBack:
-                isBothSides ? personalizationSurchargeBack : 0,
-
-              personalizationSurcharge,
-
-              quotedUnitPrice:
-                unitPrice,
-
-              quoteTotal,
-
-              paymentPlan:
-                form.paymentPlan,
-
-              // depositPaid y finalPaymentPaid NO se tocan aquí: se
-              // dejan tal como estaban (el dinero ya confirmado como
-              // pagado se conserva). Solo se ajustan la referencia
-              // del anticipo previsto y el saldo pendiente según la
-              // nueva cotización.
-              initialPaymentAmount:
-                nextInitialPaymentAmount,
-
-              balanceDue:
-                recalculatedBalanceDue,
-
-              updatedAt:
-                new Date().toISOString()
-            }
-          )
-        }
-      )
-
-      /*
-        Limpieza de mejor esfuerzo: borrar en Storage la vista
-        previa anterior (ya reemplazada) para no dejar imágenes
-        huérfanas. Si falla, no debe impedir que la edición ya
-        guardada se dé por exitosa.
-      */
-      const oldPreviewRef =
-        editingOrder.previewPath ||
-        editingOrder.previewImage
-
-      if (
-        oldPreviewRef &&
-        oldPreviewRef !== previewPath
-      ) {
-        try {
-          await deleteObject(
-            ref(
-              storage,
-              oldPreviewRef
-            )
-          )
-        } catch (storageError) {
-          console.warn(
-            'No se pudo eliminar la vista previa anterior en Storage:',
-            storageError
-          )
-        }
-      }
-
-      await reloadProducts()
-
-      notify(
-        'Pedido actualizado correctamente',
-        'success'
-      )
-
-      resetForm()
-      navigate('/historial')
-      return
-    }
-
-    // =========================================
-    // SUBIR VISTA PREVIA
-    // =========================================
-
-    const previewPath =
-      `orders/${Date.now()}.png`
-
-    const storageRef =
-      ref(
-        storage,
-        previewPath
-      )
-
-    await uploadString(
-      storageRef,
-      order.previewImage,
-      'data_url'
-    )
-
-    const previewImageUrl =
-      await getDownloadURL(
-        storageRef
-      )
-
-    // =========================================
-    // NUEVO PEDIDO
-    // =========================================
-
-    const newOrder = {
-      orderDate: form.orderDate,
-      expectedDeliveryDate: form.expectedDeliveryDate,
-      customerName:
-        form.customerName,
-
-      phone:
-        form.phone,
-
-      ...garmentData,
-
-      size:
-        form.size,
-
-      quantity:
-        requestedQuantity,
-
-      technique:
-        form.technique,
-
-      customizationSide:
-        form.customizationSide,
-
-      elements:
-        orderElements,
-
-      previewImage:
-        previewImageUrl,
-
-      previewPath,
-
-      aiValidation:
-        aiResult,
-
-      aiValidatedAt:
-        new Date().toISOString(),
-
-      // =========================================
-      // COTIZACIÓN Y PAGO
-      // =========================================
-
-      unitBasePrice,
-
-      personalizationSize:
-        form.personalizationSize,
-
-      personalizationSizeBack:
-        isBothSides ? form.personalizationSizeBack : null,
-
-      personalizationSurchargeFront,
-
-      personalizationSurchargeBack:
-        isBothSides ? personalizationSurchargeBack : 0,
-
-      personalizationSurcharge,
-
-      quotedUnitPrice:
-        unitPrice,
-
-      quoteTotal,
-
-      paymentPlan:
-        form.paymentPlan,
-
-      // Importe previsto; se confirma al aprobar.
-      initialPaymentAmount: depositPaid,
-
-      // El pedido todavía está pendiente de aprobación.
-      depositPaid: 0,
-      balanceDue: quoteTotal,
-      status: 'pendiente_aprobacion',
-
-      createdAt:
-        new Date().toISOString()
-    }
-
-    // =========================================
-    // PEDIDO CON PRENDA DE INVENTARIO
-    // =========================================
-
-    if (isInventoryGarment) {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const productRef =
-            doc(
-              db,
-              'products',
-              selectedProduct.id
-            )
-
-          const productSnap =
-            await transaction.get(
-              productRef
-            )
-
-          if (!productSnap.exists()) {
-            throw new Error(
-              'El producto seleccionado ya no existe.'
-            )
-          }
-
-          const currentStock =
-            Number(
-              productSnap.data()
-                .stock || 0
-            )
-
-          if (
-            requestedQuantity >
-            currentStock
-          ) {
-            throw new Error(
-              `Stock insuficiente. Solo hay ${currentStock} unidades disponibles.`
-            )
-          }
-
-          const newStock =
-            currentStock -
-            requestedQuantity
-
-          if (newStock < 0) {
-            throw new Error(
-              'El stock no puede quedar negativo.'
-            )
-          }
-
-          const newOrderRef =
-            doc(
-              collection(
-                db,
-                'orders'
-              )
-            )
-
-          transaction.update(
-            productRef,
-            {
-              stock:
-                newStock
-            }
-          )
-
-          transaction.set(
-            newOrderRef,
-            newOrder
-          )
-        }
-      )
-    }
-
-    // =========================================
-    // PRENDA PROPORCIONADA POR EL CLIENTE
-    // =========================================
-
-    else {
-      await addDoc(
-        collection(
-          db,
-          'orders'
-        ),
-        newOrder
-      )
-    }
-
-    await reloadProducts()
-
-    notify(
-      'Pedido guardado correctamente',
-      'success'
-    )
-
-    resetForm()
-    navigate('/historial')
-  } catch (error) {
-    console.error(
-      'Error guardando pedido:',
-      error
-    )
-
-    notify(
-      `Ocurrió un error al guardar el pedido: ${error.message}`,
-      'error'
-    )
-  } finally {
-    setIsSaving(false)
-  }
+  return <OrderForm key={location.key} order={location.state?.orderToEdit} />
 }
-  const handleGenerateAI = async () => {
-    try {
-      const isInventoryGarment =
-        form.garmentSource === 'inventory'
-
-      const isCustomerGarment =
-        form.garmentSource === 'customer'
-
-      if (
-        !form.size ||
-        !form.technique ||
-        !form.quantity ||
-        !form.customizationSide
-      ) {
-        notify(
-          'Completa talla, técnica, cantidad y área de personalización',
-          'warning'
-        )
-        return
-      }
-
-      if (
-        isInventoryGarment &&
-        !selectedProduct
-      ) {
-        notify(
-          'Selecciona un producto válido del inventario',
-          'warning'
-        )
-        return
-      }
-
-      if (
-        isCustomerGarment &&
-        (
-          !form.customerGarmentType ||
-          !form.customerGarmentColor ||
-          !hasRequiredCustomerGarmentImages
-        )
-      ) {
-        notify(
-          'Completa los datos de la prenda del cliente y carga una fotografía',
-          'warning'
-        )
-        return
-      }
-
-      if (isCustomerGarment && !isValidMoneyInput(form.customerGarmentPrice)) {
-        notify('Ingresa un monto válido para la prenda proporcionada por el cliente.', 'warning')
-        return
-      }
-
-      if (!form.personalizationSize.trim() || !isValidMoneyInput(form.personalizationSurchargeFrontInput) || (isBothSides && (!form.personalizationSizeBack.trim() || !isValidMoneyInput(form.personalizationSurchargeBackInput)))) {
-        notify('Ingresa el tamaño y recargo de personalización para cada lado usado.', 'warning')
-        return
-      }
-
-      if (form.quantity <= 0) {
-        notify(
-          'La cantidad debe ser mayor a 0',
-          'warning'
-        )
-        return
-      }
-
-      if (
-        isInventoryGarment &&
-        form.quantity > selectedProduct.stock
-      ) {
-        notify(
-          `Solo hay ${selectedProduct.stock} unidades disponibles`,
-          'warning'
-        )
-        return
-      }
-
-      setLoadingAI(true)
-      setAiResult(null)
-
-      const currentUser = auth.currentUser
-      if (!currentUser) {
-        notify('Tu sesión venció. Inicia sesión nuevamente.', 'warning')
-        return
-      }
-      const idToken = await getIdToken(currentUser)
-      const apiBaseUrl = import.meta.env.VITE_API_URL ||
-        (import.meta.env.DEV ? 'http://localhost:3001' : '')
-
-      if (!apiBaseUrl) {
-        throw new Error('Falta configurar VITE_API_URL con la dirección del servidor Render.')
-      }
-
-      const response =
-        await fetch(
-          `${apiBaseUrl.replace(/\/$/, '')}/api/ai/recommendation`,
+function OrderForm({ order }) {
+  const navigate = useNavigate()
+  const [form, setForm] = useState(() => getInitial(order))
+  const [images, setImages] = useState(() => ({
+    ...emptyImages,
+    front: order?.customerGarmentImage || '',
+    back: order?.customerGarmentImage || '',
+    ...order?.customerGarment?.images,
+  }))
+  const [attachments, setAttachments] = useState(
+    () => order?.referenceImages || [],
+  )
+  const [elements, setElements] = useState(() => order?.elements || [])
+  const [areaDetails, setAreaDetails] = useState(
+    () =>
+      order?.areaDetails ||
+      Object.fromEntries(
+        areaKeys(order?.customizationSide).map((s, i) => [
+          s,
           {
-            method: 'POST',
-
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${idToken}`
-            },
-
-            body:
-              JSON.stringify({
-                garmentSource:
-                  form.garmentSource,
-
-                product:
-                  isInventoryGarment
-                    ? selectedProduct.name
-                    : form.customerGarmentDescription ||
-                      form.customerGarmentType,
-
-                productType:
-                  isInventoryGarment
-                    ? selectedProduct.type
-                    : form.customerGarmentType,
-
-                productColor:
-                  isInventoryGarment
-                    ? selectedProduct.color
-                    : form.customerGarmentColor,
-
-                size:
-                  form.size,
-
-                technique:
-                  form.technique,
-
-                quantity:
-                  form.quantity,
-
-                customizationSide:
-                  form.customizationSide,
-
-                customerGarmentDescription:
-                  isCustomerGarment
-                    ? form.customerGarmentDescription
-                    : '',
-
-                previewImage:
-                  previewBase64,
-
-                elements:
-                  editorElements
-              })
-          }
-        )
-
-      if (!response.ok) {
-        const errorData =
-          await response
-            .json()
-            .catch(() => null)
-
+            size:
+              (i === 0
+                ? order.personalizationSize
+                : order.personalizationSizeBack) || '',
+            surcharge: String(
+              (i === 0
+                ? (order.personalizationSurchargeFront ??
+                  order.personalizationSurcharge)
+                : order.personalizationSurchargeBack) ?? '',
+            ),
+          },
+        ]),
+      ),
+  )
+  const [ai, setAi] = useState(null)
+  const [loadingAI, setLoadingAI] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const editor = useRef(null),
+    busy = useRef(false),
+    fileBusy = useRef(false)
+  const { inventoryProducts, loadingProducts, productsError, reloadProducts } =
+    useInventoryProducts()
+  const products = inventoryProducts.filter(
+    (p) => categoryOf(p) === form.category,
+  )
+  const product = products.find((p) => p.id === form.productId)
+  const garment = form.category === 'prenda',
+    advertising = form.category === 'publicidad'
+  const fromInventory =
+    !advertising && (!garment || form.garmentSource === 'inventory')
+  const sides = areaKeys(form.customizationSide)
+  const quantity = advertising ? 1 : Number(form.quantity)
+  const base = Number(form.unitBasePrice || 0)
+  const surcharge = garment
+    ? sides.reduce((sum, s) => sum + Number(areaDetails[s]?.surcharge || 0), 0)
+    : 0
+  const unitPrice = money(base + surcharge),
+    total = money(unitPrice * quantity)
+  const planned = money(form.paymentPlan === 'completo' ? total : total * 0.5)
+  const signature = JSON.stringify({
+    size: form.size,
+    quantity,
+    technique: form.technique,
+    side: form.customizationSide,
+    productId: form.productId,
+    type: form.customerGarmentType,
+    color: form.customerGarmentColor,
+    description: form.description,
+    images,
+    elements,
+    areaDetails,
+    productImages: product?.images,
+    productType: product?.type,
+    productColor: product?.color,
+    source: form.garmentSource,
+  })
+  const latestSignature = useRef(signature)
+  useEffect(() => {
+    latestSignature.current = signature
+  }, [signature])
+  const aiCurrent = ai?.signature === signature
+  const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const selectProduct = (id) => {
+    const p = products.find((p) => p.id === id)
+    setForm((prev) => ({
+      ...prev,
+      productId: id,
+      size: p?.size || p?.sizes?.[0] || '',
+      technique: '',
+      customizationSide: '',
+    }))
+    setElements([])
+    setAi(null)
+  }
+  const changeCategory = (value) => {
+    setForm((prev) => ({
+      ...getInitial(),
+      customerName: prev.customerName,
+      phone: prev.phone,
+      orderDate: prev.orderDate,
+      expectedDeliveryDate: prev.expectedDeliveryDate,
+      category: value,
+    }))
+    setImages(emptyImages)
+    setAttachments([])
+    setElements([])
+    setAreaDetails({})
+    setAi(null)
+  }
+  const validateFields = () => {
+    if (!Object.hasOwn(CATEGORIES, form.category))
+      throw new Error('Selecciona el tipo de pedido.')
+    if (!form.customerName.trim() || !/^\d{7,8}$/.test(form.phone))
+      throw new Error('Ingresa el nombre y un teléfono de 7 u 8 dígitos.')
+    if (
+      !localDateValue(form.orderDate) ||
+      !localDateValue(form.expectedDeliveryDate) ||
+      form.expectedDeliveryDate < form.orderDate
+    )
+      throw new Error('Revisa la fecha de toma y la fecha prevista de entrega.')
+    if (!Number.isInteger(quantity) || quantity <= 0)
+      throw new Error('La cantidad debe ser un número entero mayor que cero.')
+    if (!validAmount(form.unitBasePrice) || !Number.isFinite(total))
+      throw new Error('Ingresa un precio válido, igual o mayor a cero.')
+    if (fromInventory && (!product || product.legacyMultiSize))
+      throw new Error(
+        'Selecciona un producto válido con inventario individual.',
+      )
+    if (advertising && !form.description.trim())
+      throw new Error('Describe el trabajo de publicidad.')
+    if (garment) {
+      if (!form.size.trim() || !form.technique || !sides.length)
+        throw new Error('Completa talla, técnica y área.')
+      if (
+        fromInventory &&
+        (!product.allowedTechniques.includes(form.technique) ||
+          !product.availableSides.includes(form.customizationSide))
+      )
         throw new Error(
-          errorData?.message ||
-          'Error en la respuesta del servidor'
+          'La técnica o el área no están habilitadas para esta prenda.',
         )
-      }
-
-      const data =
-        await response.json()
-
-      let result =
-        data.result
-
       if (
-        typeof result === 'string'
-      ) {
-        result =
-          JSON.parse(result)
-      }
-
+        !fromInventory &&
+        (!form.customerGarmentType.trim() ||
+          !form.customerGarmentColor.trim() ||
+          sides.some((s) => !images[imageKey(s)]))
+      )
+        throw new Error(
+          'Completa la prenda del cliente y carga una fotografía por área seleccionada.',
+        )
       if (
-        result?.text &&
-        typeof result.text === 'string'
-      ) {
-        result =
-          JSON.parse(
-            result.text
-          )
-      }
-
-      setAiResult(result)
+        sides.some(
+          (s) =>
+            !areaDetails[s]?.size?.trim() ||
+            !validAmount(areaDetails[s]?.surcharge),
+        )
+      )
+        throw new Error('Ingresa tamaño y recargo para cada área seleccionada.')
+    }
+  }
+  const validateAI = async () => {
+    if (loadingAI) return
+    const requestSignature = signature
+    try {
+      validateFields()
+      setLoadingAI(true)
+      setAi(null)
+      const preview = await editor.current.generatePreview()
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/ai/recommendation`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await getIdToken(auth.currentUser)}`,
+          },
+          body: JSON.stringify({
+            garmentSource: form.garmentSource,
+            product:
+              product?.name || form.description || form.customerGarmentType,
+            productType: product?.type || form.customerGarmentType,
+            productColor: product?.color || form.customerGarmentColor,
+            size: form.size,
+            technique: form.technique,
+            quantity,
+            customizationSide: form.customizationSide,
+            customerGarmentDescription: form.description,
+            previewImage: preview,
+            elements: elements.map((element) => ({
+              type: element.type,
+              text: element.text || '',
+              side: element.side || '',
+              x: element.x,
+              y: element.y,
+              width: element.width || 0,
+              height: element.height || 0,
+            })),
+          }),
+        },
+      )
+      const data = await response.json()
+      if (!response.ok)
+        throw new Error(
+          data.message || 'No se pudo validar la personalización.',
+        )
+      const result =
+        typeof data.result === 'string' ? JSON.parse(data.result) : data.result
+      if (!result || !result.riskLevel)
+        throw new Error('La validación recibida no es válida.')
+      if (latestSignature.current !== requestSignature)
+        throw new Error(
+          'El diseño cambió durante el análisis. Vuelve a validar.',
+        )
+      setAi({
+        result,
+        signature: requestSignature,
+        at: new Date().toISOString(),
+      })
     } catch (error) {
-      console.error(
-        'Error con IA:',
-        error
-      )
-
-      notify(
-        `Error con IA: ${error.message}`,
-        'error'
-      )
+      notify(error.message, 'error')
     } finally {
       setLoadingAI(false)
     }
   }
-
+  const save = async (e) => {
+    e.preventDefault()
+    if (busy.current || fileBusy.current) return
+    const uploaded = []
+    try {
+      validateFields()
+      if (garment && !aiCurrent)
+        throw new Error(
+          'Valida la personalización con IA antes de guardar el pedido.',
+        )
+      busy.current = true
+      setSaving(true)
+      const referenceImages = []
+      for (const image of attachments)
+        referenceImages.push(
+          await persistImage(image, 'order-references', uploaded),
+        )
+      const previewImage = garment
+        ? await persistImage(
+            await editor.current.generatePreview(),
+            'orders',
+            uploaded,
+          )
+        : referenceImages[0] || product?.images?.frente || ''
+      const savedImages = {}
+      if (garment && !fromInventory)
+        for (const key of Object.keys(emptyImages))
+          savedImages[key] = await persistImage(
+            images[key],
+            'customer-garments',
+            uploaded,
+          )
+      const savedElements = []
+      for (const el of elements)
+        savedElements.push(
+          el.type === 'image'
+            ? {
+                ...el,
+                src: await persistImage(el.src, 'order-elements', uploaded),
+              }
+            : el,
+        )
+      const details = garment
+        ? Object.fromEntries(
+            sides.map((s) => [
+              s,
+              {
+                size: areaDetails[s].size.trim(),
+                surcharge: money(areaDetails[s].surcharge),
+              },
+            ]),
+          )
+        : {}
+      const data = {
+        category: form.category,
+        customerName: form.customerName.trim(),
+        phone: form.phone,
+        orderDate: form.orderDate,
+        expectedDeliveryDate: form.expectedDeliveryDate,
+        garmentSource: fromInventory
+          ? 'inventory'
+          : advertising
+            ? 'advertising'
+            : 'customer',
+        productId: fromInventory ? product.id : null,
+        productName: advertising
+          ? form.title.trim() || 'Trabajo de publicidad'
+          : fromInventory
+            ? product.name
+            : form.customerGarmentType.trim(),
+        productType: fromInventory
+          ? product.type
+          : garment
+            ? form.customerGarmentType
+            : 'publicidad',
+        productColor: fromInventory
+          ? product.color || ''
+          : form.customerGarmentColor,
+        description: form.description.trim(),
+        size: garment ? form.size.trim() : '',
+        quantity,
+        technique: garment ? form.technique : '',
+        customizationSide: garment ? form.customizationSide : '',
+        areaDetails: details,
+        personalizationSize: garment
+          ? details[sides[0]].size
+          : form.personalizationSize.trim(),
+        personalizationSizeBack:
+          garment && sides.length > 1 ? details[sides[1]].size : null,
+        personalizationSurchargeFront: garment
+          ? details[sides[0]].surcharge
+          : 0,
+        personalizationSurchargeBack:
+          garment && sides.length > 1 ? details[sides[1]].surcharge : 0,
+        personalizationSurcharge: money(surcharge),
+        unitBasePrice: money(base),
+        quotedUnitPrice: unitPrice,
+        quoteTotal: total,
+        paymentPlan: form.paymentPlan,
+        previewImage,
+        referenceImages,
+        elements: garment ? savedElements : [],
+        customerGarment:
+          garment && !fromInventory
+            ? {
+                type: form.customerGarmentType.trim(),
+                color: form.customerGarmentColor.trim(),
+                description: form.description.trim(),
+                images: savedImages,
+              }
+            : null,
+        aiValidation: garment ? ai.result : null,
+        aiValidatedAt: garment ? ai.at : null,
+      }
+      await saveBusinessOrder(data, order?.id)
+      notify(
+        order
+          ? 'Pedido actualizado correctamente'
+          : 'Pedido guardado correctamente',
+        'success',
+      )
+      navigate('/historial')
+    } catch (error) {
+      await cleanUploads(uploaded)
+      notify(error.message, 'error')
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
+  }
+  const uploadReferences = async (e) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (files.length + attachments.length > 8) {
+      notify('Puedes agregar hasta 8 imágenes.', 'warning')
+      return
+    }
+    fileBusy.current = true
+    try {
+      const values = await Promise.all(files.map(readImage))
+      setAttachments((prev) => [...prev, ...values])
+    } catch (error) {
+      notify(error.message, 'error')
+    } finally {
+      fileBusy.current = false
+    }
+  }
   return (
-    <div className="create-order-page">
-
-      {/* ENCABEZADO */}
+    <form className="create-order-page business-form" onSubmit={save}>
       <div className="order-page-header">
         <div>
-          <h2 className="page-title">
-            {editingOrder
-              ? 'Editar pedido'
-              : 'Crear pedido personalizado'}
-          </h2>
-
-          <p className="page-subtitle">
-            {editingOrder
-              ? 'Actualiza la información y personalización del pedido seleccionado.'
-              : 'Registra los datos del cliente, personaliza la prenda y valida el diseño antes de guardar.'}
-          </p>
+          <h2>{order ? 'Editar pedido' : 'Crear pedido'}</h2>
+          <p>Completa los datos y revisa la cotización antes de guardar.</p>
         </div>
+        <button
+          type="submit"
+          className="fab-save-button"
+          disabled={saving || loadingAI}
+          title="Guardar pedido"
+          aria-label="Guardar pedido"
+        >
+          {saving ? '…' : '✓'}
+        </button>
       </div>
-
-      {editingOrder && (
-        <div className="editing-header-actions">
-          <span className="editing-badge">
-            Editando pedido
-          </span>
-
-          <button
-            type="button"
-            className="btn btn-outline-secondary btn-sm"
-            onClick={() => navigate('/historial')}
-          >
-            Cancelar
-          </button>
-        </div>
-      )}
-
-      {/* BOTÓN DE GUARDAR CIRCULAR FIJO (visible siempre, del inicio al final) */}
-      <button
-        type="button"
-        className={`fab-save-button ${isSaving ? 'is-saving' : ''}`}
-        disabled={isSaving}
-        title={
-          editingOrder
-            ? 'Guardar cambios del pedido'
-            : 'Guardar pedido'
-        }
-        aria-label={
-          editingOrder
-            ? 'Guardar cambios del pedido'
-            : 'Guardar pedido'
-        }
-        onClick={() =>
-          garmentEditorRef.current?.triggerSave()
-        }
-      >
-        {isSaving ? (
-          <span className="fab-spinner" aria-hidden="true" />
-        ) : (
-          <svg
-            width="26"
-            height="26"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M4 12.5L9.5 18L20 6"
-              stroke="#1a1a1a"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </button>
-
-      {/* PASO 1 */}
-      <section className="order-section">
-        <div className="order-section-header">
-          <span className="section-number">
-            1
-          </span>
-
-          <div>
-            <h3>
-              Información del cliente
-            </h3>
-
-            <p>
-              Ingresa los datos de contacto asociados al pedido.
-            </p>
-          </div>
-        </div>
-
-        <div className="row g-3">
-
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Nombre del cliente
-            </label>
-
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Ej. Ana López"
-              value={
-                form.customerName
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  // Solo letras (con acentos/ñ), espacios, apóstrofe
-                  // y guion: sin números ni otros símbolos.
-                  customerName:
-                    e.target.value.replace(/[^\p{L}\s'-]/gu, '')
-                })
-              }
-            />
-          </div>
-
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Teléfono
-            </label>
-
-            <input
-              type="tel"
-              inputMode="numeric"
-              maxLength={8}
-              className="form-control"
-              placeholder="Ej. 55555555"
-              value={
-                form.phone
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  // Solo dígitos: el número se usa tal cual para
-                  // armar el link de WhatsApp más adelante.
-                  phone:
-                    e.target.value.replace(/\D/g, '')
-                })
-              }
-            />
-          </div>
-
-          <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="orderDate">Fecha de toma del pedido</label>
-            <input id="orderDate" type="date" className="form-control"
-              value={form.orderDate} required
-              readOnly={Boolean(editingOrder && (localDateValue(editingOrder.orderDate) || localDateValue(editingOrder.createdAt)))}
-              onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
-            />
-            {editingOrder && !localDateValue(editingOrder.orderDate) && !localDateValue(editingOrder.createdAt) && (
-              <small className="text-muted">Este pedido antiguo no tiene fecha de toma. Indica la fecha correcta.</small>
-            )}
-          </div>
-          <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="expectedDeliveryDate">Fecha prevista de entrega</label>
-            <input id="expectedDeliveryDate" type="date" className="form-control"
-              value={form.expectedDeliveryDate} min={form.orderDate || undefined} required
-              onChange={(e) => setForm({ ...form, expectedDeliveryDate: e.target.value })}
-            />
-            {form.expectedDeliveryDate && form.orderDate && form.expectedDeliveryDate < form.orderDate && (
-              <small className="text-danger">La entrega no puede ser anterior a la toma del pedido.</small>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* PASO 2 */}
-      <section className="order-section">
-        <div className="order-section-header">
-          <span className="section-number">
-            2
-          </span>
-
-          <div>
-            <h3>
-              Configuración del producto
-            </h3>
-
-            <p>
-              Selecciona la prenda y las características del pedido.
-            </p>
-          </div>
-        </div>
-
-        <GarmentSourceSelector
-          form={form}
-          setForm={setForm}
-          setAiResult={
-            setAiResult
-          }
-          setPreviewBase64={
-            setPreviewBase64
-          }
-          setEditorElements={
-            setEditorElements
-          }
-        />
-
-        {form.garmentSource ===
-          'inventory' && (
-          <InventoryGarmentForm
-            form={form}
-            setForm={setForm}
-            selectedProduct={
-              selectedProduct
-            }
-            inventoryProducts={
-              inventoryProducts
-            }
-            setAiResult={
-              setAiResult
-            }
-            setPreviewBase64={
-              setPreviewBase64
-            }
-            setEditorElements={
-              setEditorElements
-            }
-          />
-        )}
-
-        {form.garmentSource ===
-          'customer' && (
-          <CustomerGarmentForm
-            form={form}
-            setForm={setForm}
-            setAiResult={
-              setAiResult
-            }
-          />
-        )}
-      </section>
-
-      {/* PASO 3: COTIZACIÓN */}
-      <section className="order-section">
-        <div className="order-section-header">
-          <span className="section-number">
-            3
-          </span>
-
-          <div>
-            <h3>
-              Cotización y forma de pago
-            </h3>
-
-            <p>
-              Calculá el total del pedido según la prenda y la técnica de personalización.
-            </p>
-          </div>
-        </div>
-
-        {isInventoryGarment && (
-          <p className="quote-hint">
-            {selectedProduct
-              ? `Precio de la prenda seleccionada: Q${Number(selectedProduct.price || 0).toFixed(2)}`
-              : 'Seleccioná un producto del inventario para ver su precio.'}
-          </p>
-        )}
-
-        {isCustomerGarment && (
-          <div className="col-12 col-md-6 mb-3">
-            <label className="form-label" htmlFor="customerGarmentPrice">Precio por prenda del cliente (Q)</label>
-            <input id="customerGarmentPrice" type="number" className="form-control" min="0" step="0.01" value={form.customerGarmentPrice} onChange={(event) => setForm({ ...form, customerGarmentPrice: event.target.value })} placeholder="Ingresa el monto por prenda (puede ser 0)" required />
-            <div className="form-text">Este monto se multiplicará por la cantidad y se incluirá en el resumen de ingresos.</div>
-          </div>
-        )}
-
-        <div className="row g-3 mb-2">
-          <div className="col-12 col-md-4">
-            <label className="form-label">
-              {isBothSides
-                ? 'Tamaño del diseño (frente)'
-                : 'Tamaño de la personalización'}
-            </label>
-
-            <input
-              type="text"
-              className="form-control"
-              value={form.personalizationSize}
-              onChange={(event) => setForm({ ...form, personalizationSize: event.target.value })}
-              placeholder="Ej. 20 x 25 cm"
-              required
-            />
-          </div>
-
-          {isBothSides && (
-            <div className="col-12 col-md-4">
-              <label className="form-label">
-                Tamaño del diseño (espalda)
+      <fieldset disabled={saving}>
+        <section className="order-section">
+          <h3>Tipo de pedido</h3>
+          <div className="category-options">
+            {Object.entries(CATEGORIES).map(([value, label]) => (
+              <label
+                key={value}
+                className={`category-option ${form.category === value ? 'selected' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="category"
+                  value={value}
+                  checked={form.category === value}
+                  disabled={Boolean(order)}
+                  onChange={() => changeCategory(value)}
+                />
+                {label}
               </label>
-
-              <input
-                type="text"
-                className="form-control"
-                value={form.personalizationSizeBack}
-                onChange={(event) => setForm({ ...form, personalizationSizeBack: event.target.value })}
-                placeholder="Ej. 25 x 30 cm"
-                required
-              />
-            </div>
-          )}
-
-          <div className="col-12 col-md-4">
-            <label className="form-label">Recargo frente por prenda (Q)</label>
-            <input
-              type="number"
-              className="form-control"
-              min="0"
-              step="0.01"
-              value={form.personalizationSurchargeFrontInput}
-              onChange={(event) => setForm({ ...form, personalizationSurchargeFrontInput: event.target.value })}
-              placeholder="0.00"
-              required
-            />
+            ))}
           </div>
-
-          {isBothSides && (
-            <div className="col-12 col-md-4">
-              <label className="form-label">Recargo espalda por prenda (Q)</label>
-              <input
-                type="number"
-                className="form-control"
-                min="0"
-                step="0.01"
-                value={form.personalizationSurchargeBackInput}
-                onChange={(event) => setForm({ ...form, personalizationSurchargeBackInput: event.target.value })}
-                placeholder="0.00"
-                required
-              />
-            </div>
+          {order && (
+            <p className="form-text">
+              La categoría de un pedido guardado se conserva.
+            </p>
           )}
-        </div>
-
-        {isBothSides && (
-          <p className="quote-hint">
-            El área es "Frente y espalda": se cobra un recargo de personalización por cada lado (pueden ser tamaños distintos).
-          </p>
-        )}
-
-        {form.technique && form.personalizationSize && form.personalizationSurchargeFrontInput !== '' && (isBothSides ? form.personalizationSizeBack && form.personalizationSurchargeBackInput !== '' : true) && (isInventoryGarment ? Boolean(selectedProduct) : form.customerGarmentPrice !== '') && (
-          <div className="quote-summary">
-            <div className="quote-breakdown">
-              <div className="quote-row">
-                <span>{isCustomerGarment ? 'Monto por prenda del cliente' : 'Precio base de la prenda'}</span>
-                <strong>Q{unitBasePrice.toFixed(2)}</strong>
+        </section>
+        {form.category && (
+          <>
+            <section className="order-section">
+              <h3>1 Información del cliente</h3>
+              <div className="row g-3">
+                <Field
+                  label="Nombre del cliente"
+                  value={form.customerName}
+                  onChange={(v) => set('customerName', v)}
+                  required
+                />
+                <Field
+                  label="Teléfono"
+                  value={form.phone}
+                  onChange={(v) =>
+                    set('phone', v.replace(/\D/g, '').slice(0, 8))
+                  }
+                  required
+                />
+                <Field
+                  label="Fecha de toma del pedido"
+                  type="date"
+                  value={form.orderDate}
+                  onChange={(v) => set('orderDate', v)}
+                  required
+                />
+                <Field
+                  label="Fecha prevista de entrega"
+                  type="date"
+                  value={form.expectedDeliveryDate}
+                  onChange={(v) => set('expectedDeliveryDate', v)}
+                  required
+                />
               </div>
-
-              {!isBothSides && (
-                <div className="quote-row">
-                  <span>Recargo por personalización ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
-                  <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
-                </div>
+            </section>
+            <section className="order-section">
+              <h3>
+                2{' '}
+                {advertising
+                  ? 'Trabajo de publicidad'
+                  : 'Configuración del producto'}
+              </h3>
+              {garment && (
+                <label className="form-label">
+                  Origen de la prenda
+                  <select
+                    className="form-select"
+                    value={form.garmentSource}
+                    onChange={(e) => {
+                      set('garmentSource', e.target.value)
+                      set('productId', '')
+                      setElements([])
+                    }}
+                  >
+                    <option value="inventory">Producto del inventario</option>
+                    <option value="customer">
+                      Prenda proporcionada por el cliente
+                    </option>
+                  </select>
+                </label>
               )}
-
-              {isBothSides && (
+              {fromInventory && (
                 <>
-                  <div className="quote-row">
-                    <span>Recargo frente ({form.technique || 'sin técnica'}, {form.personalizationSize})</span>
-                    <strong>Q{personalizationSurchargeFront.toFixed(2)}</strong>
-                  </div>
-
-                  <div className="quote-row">
-                    <span>Recargo espalda ({form.technique || 'sin técnica'}, {form.personalizationSizeBack})</span>
-                    <strong>Q{personalizationSurchargeBack.toFixed(2)}</strong>
-                  </div>
+                  <label className="form-label d-block">
+                    Producto del inventario
+                    <select
+                      required
+                      className="form-select"
+                      value={form.productId}
+                      onChange={(e) => selectProduct(e.target.value)}
+                    >
+                      <option value="">Seleccione</option>
+                      {products.map((p) => (
+                        <option
+                          key={p.id}
+                          value={p.id}
+                          disabled={p.legacyMultiSize}
+                        >
+                          {p.name} / {p.size || p.color || ''} / Stock {p.stock}
+                          {p.legacyMultiSize ? ' — separar tallas' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {loadingProducts && <p>Cargando productos...</p>}
+                  {productsError && (
+                    <div className="alert alert-danger">
+                      No se pudo cargar el inventario.{' '}
+                      <button type="button" onClick={reloadProducts}>
+                        Reintentar
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
-
-              <div className="quote-row">
-                <span>Precio unitario</span>
-                <strong>Q{unitPrice.toFixed(2)}</strong>
-              </div>
-
-              <div className="quote-row">
-                <span>Cantidad</span>
-                <strong>{quantityForQuote}</strong>
-              </div>
-            </div>
-
-            <div className="quote-total-banner">
-              <span>Total cotizado</span>
-              <strong>Q{quoteTotal.toFixed(2)}</strong>
-            </div>
-
-            <div className="quote-payment-plan">
-              <p className="quote-section-label">Forma de pago</p>
-
-              <div className="quote-payment-options">
-                <label
-                  className={`quote-payment-card ${form.paymentPlan === 'anticipo_50' ? 'active' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentPlan"
-                    value="anticipo_50"
-                    checked={form.paymentPlan === 'anticipo_50'}
-                    onChange={() =>
-                      setForm({
-                        ...form,
-                        paymentPlan: 'anticipo_50'
-                      })
-                    }
+              <div className="row g-3">
+                {garment && !fromInventory && (
+                  <>
+                    <Field
+                      label="Tipo de prenda"
+                      value={form.customerGarmentType}
+                      onChange={(v) => set('customerGarmentType', v)}
+                      required
+                    />
+                    <Field
+                      label="Color de la prenda"
+                      value={form.customerGarmentColor}
+                      onChange={(v) => set('customerGarmentColor', v)}
+                      required
+                    />
+                  </>
+                )}
+                {garment && (
+                  <Field
+                    label="Talla"
+                    value={form.size}
+                    onChange={(v) => set('size', v)}
+                    readOnly={fromInventory}
+                    required
                   />
-                  <div>
-                    <strong>Anticipo 50%</strong>
-                    <span>Paga la mitad ahora y el resto al entregar</span>
-                  </div>
-                </label>
-
-                <label
-                  className={`quote-payment-card ${form.paymentPlan === 'completo' ? 'active' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentPlan"
-                    value="completo"
-                    checked={form.paymentPlan === 'completo'}
-                    onChange={() =>
-                      setForm({
-                        ...form,
-                        paymentPlan: 'completo'
-                      })
-                    }
+                )}
+                {!advertising && (
+                  <Field
+                    label="Cantidad"
+                    type="number"
+                    value={form.quantity}
+                    onChange={(v) => set('quantity', v)}
+                    min="1"
+                    step="1"
+                    required
                   />
-                  <div>
-                    <strong>Pago completo</strong>
-                    <span>Paga el total del pedido ahora</span>
-                  </div>
+                )}
+                {garment && (
+                  <>
+                    <label className="col-md-6">
+                      Técnica
+                      <select
+                        required
+                        className="form-select"
+                        value={form.technique}
+                        onChange={(e) => set('technique', e.target.value)}
+                      >
+                        <option value="">Seleccione</option>
+                        {(fromInventory
+                          ? product?.allowedTechniques || []
+                          : ['DTF', 'Bordado', 'Sublimación', 'Vinil textil']
+                        ).map((t) => (
+                          <option key={t}>{t}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="col-md-6">
+                      Área a personalizar
+                      <select
+                        required
+                        className="form-select"
+                        value={form.customizationSide}
+                        onChange={(e) =>
+                          set('customizationSide', e.target.value)
+                        }
+                      >
+                        <option value="">Seleccione</option>
+                        {AREA_OPTIONS.filter(
+                          ([value]) =>
+                            !fromInventory ||
+                            product?.availableSides.includes(value),
+                        ).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+                {advertising && (
+                  <Field
+                    label="Nombre del trabajo"
+                    value={form.title}
+                    onChange={(v) => set('title', v)}
+                  />
+                )}
+                <label className="col-12">
+                  Descripción o comentarios
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    maxLength={garment ? 300 : 2000}
+                    value={form.description}
+                    onChange={(e) => set('description', e.target.value)}
+                    required={advertising}
+                  />
                 </label>
               </div>
-            </div>
-
-            <div className="quote-payment-result">
-              <div className="quote-stat quote-stat-now">
-                <span>
-                  {form.paymentPlan === 'completo'
-                    ? 'Total a pagar ahora'
-                    : 'Anticipo a pagar ahora (50%)'}
-                </span>
-                <strong>Q{depositPaid.toFixed(2)}</strong>
+            </section>
+            <section className="order-section">
+              <h3>3 Cotización y forma de pago</h3>
+              <div className="row g-3">
+                <Field
+                  label={
+                    advertising
+                      ? 'Monto del trabajo (Q)'
+                      : 'Precio base unitario (Q)'
+                  }
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.unitBasePrice}
+                  onChange={(v) => set('unitBasePrice', v)}
+                  required
+                />
+                {!garment && !advertising && (
+                  <Field
+                    label="Tamaño o especificaciones"
+                    value={form.personalizationSize}
+                    onChange={(v) => set('personalizationSize', v)}
+                  />
+                )}
+                {garment &&
+                  sides.map((side) => (
+                    <div key={side} className="col-12">
+                      <h6>{AREA_LABELS[side]}</h6>
+                      <div className="row g-2">
+                        <Field
+                          label="Tamaño de la personalización"
+                          value={areaDetails[side]?.size || ''}
+                          onChange={(v) =>
+                            setAreaDetails((prev) => ({
+                              ...prev,
+                              [side]: { ...prev[side], size: v },
+                            }))
+                          }
+                          required
+                        />
+                        <Field
+                          label="Recargo por unidad (Q)"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={areaDetails[side]?.surcharge ?? ''}
+                          onChange={(v) =>
+                            setAreaDetails((prev) => ({
+                              ...prev,
+                              [side]: { ...prev[side], surcharge: v },
+                            }))
+                          }
+                          required
+                        />
+                      </div>
+                    </div>
+                  ))}
               </div>
-
-              <div className="quote-stat quote-stat-balance">
-                <span>Saldo pendiente</span>
-                <strong>Q{balanceDue.toFixed(2)}</strong>
+              <div className="quote-total-banner mt-3">
+                <span>Total cotizado</span>
+                <strong>
+                  Q{Number.isFinite(total) ? total.toFixed(2) : '0.00'}
+                </strong>
               </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* PASO 4 */}
-      <section className="order-section">
-        <div className="order-section-header">
-          <span className="section-number">
-            4
-          </span>
-
-          <div>
-            <h3>
-              Personalización de la prenda
-            </h3>
-
-            <p>
-              Agrega logos, imágenes o texto y ajusta su posición sobre la prenda.
-            </p>
-          </div>
-        </div>
-
-        {form.garmentSource ===
-          'customer' && (
-        <CustomerGarmentPreview
-            form={form}
-          images={customerGarmentImages}
-            onImageChange={
-              (side, image) => {
-                setCustomerGarmentImages((current) => ({ ...current, [side]: image }))
-                setPreviewBase64('')
-                setAiResult(null)
-              }
-            }
-          />
-        )}
-
-        <GarmentEditor
-          ref={
-            garmentEditorRef
-          }
-
-          product={
-            selectedProduct
-          }
-
-          customerGarmentImage={customerGarmentImage}
-          customerGarmentImages={customerGarmentImages}
-
-          customerGarment={{
-            type:
-              form.customerGarmentType,
-
-            color:
-              form.customerGarmentColor
-          }}
-
-          customizationSide={
-            form.customizationSide
-          }
-
-          initialElements={
-            editingOrder?.elements || []
-          }
-
-          onPreviewChange={
-            (base64) =>
-              setPreviewBase64(
-                base64
-              )
-          }
-
-          onElementsChange={
-            (newElements) => {
-              setEditorElements(
-                newElements
-              )
-
-              /*
-                Si estamos editando un pedido y la personalización
-                ya cambió respecto a la última versión que vimos,
-                la validación de IA anterior queda desactualizada:
-                hay que forzar que se vuelva a validar antes de
-                poder guardar.
-
-                Importante: comparamos contra la última versión
-                notificada (lastNotifiedElementsRef), NO contra
-                editingOrder.elements directamente. El editor puede
-                volver a avisar los mismos elementos sin que la
-                persona haya cambiado nada (por ejemplo al hidratar
-                el diseño guardado al entrar a editar), y comparar
-                siempre contra editingOrder.elements hacía que esos
-                avisos repetidos "detectaran" una diferencia y
-                borraran la validación justo después de generarla.
-              */
-              const changed =
-                JSON.stringify(newElements) !==
-                JSON.stringify(
-                  lastNotifiedElementsRef.current
-                )
-
-              lastNotifiedElementsRef.current =
-                newElements
-
-              if (
-                editingOrder &&
-                aiResult &&
-                changed
-              ) {
-                setAiResult(null)
-              }
-            }
-          }
-
-          onSave={
-            handleSaveOrder
-          }
-        />
-      </section>
-
-      {/* PASO 5 */}
-      <section className="order-section">
-        <div className="order-section-header">
-          <span className="section-number ai-number">
-            ✦
-          </span>
-
-          <div>
-            <h3>
-              Validación inteligente
-            </h3>
-
-            <p>
-              Analiza la configuración y el diseño antes de registrar el pedido.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="ai-validation-button"
-          onClick={
-            handleGenerateAI
-          }
-          disabled={
-            loadingAI
-          }
-        >
-          {loadingAI
-            ? 'Analizando personalización...'
-            : '✦ Validar personalización con IA'}
-        </button>
-
-        {aiResult && (
-          <div className="ai-result-card">
-
-            <div className="ai-result-header">
-              <div>
-                <span className="ai-label">
-                  Resultado del asistente
-                </span>
-
-                <h4>
-                  Validación de la personalización
-                </h4>
+              <p className="form-text">
+                {advertising
+                  ? 'Monto total del trabajo.'
+                  : 'El precio base más los recargos por unidad se multiplica por la cantidad.'}
+              </p>
+              <label>
+                Forma de pago
+                <select
+                  className="form-select"
+                  value={form.paymentPlan}
+                  onChange={(e) => set('paymentPlan', e.target.value)}
+                >
+                  <option value="anticipo_50">Anticipo 50%</option>
+                  <option value="completo">Pago completo</option>
+                </select>
+              </label>
+              <div className="row mt-3">
+                <p className="col">
+                  Pago inicial previsto:{' '}
+                  <strong>
+                    Q{Number.isFinite(planned) ? planned.toFixed(2) : '0.00'}
+                  </strong>
+                </p>
+                <p className="col">
+                  Saldo previsto:{' '}
+                  <strong>
+                    Q
+                    {Number.isFinite(total - planned)
+                      ? money(total - planned).toFixed(2)
+                      : '0.00'}
+                  </strong>
+                </p>
               </div>
-
-              <span
-                className={`risk-badge ${
-                  aiResult.riskLevel === 'alto'
-                    ? 'risk-high'
-                    : aiResult.riskLevel === 'medio'
-                      ? 'risk-medium'
-                      : 'risk-low'
-                }`}
+            </section>
+            {garment ? (
+              <>
+                <section className="order-section">
+                  <h3>4 Personalización de la prenda</h3>
+                  {!fromInventory && (
+                    <div className="row g-3 mb-3">
+                      {sides.map((side) => (
+                        <label key={side} className="col-md-6">
+                          Fotografía de {AREA_LABELS[side].toLowerCase()}
+                          <input
+                            type="file"
+                            className="form-control"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              try {
+                                const value = await readImage(file)
+                                setImages((prev) => ({
+                                  ...prev,
+                                  [imageKey(side)]: value,
+                                }))
+                              } catch (error) {
+                                notify(error.message, 'error')
+                              }
+                              e.target.value = ''
+                            }}
+                          />
+                          {images[imageKey(side)] && (
+                            <img
+                              className="reference-thumb"
+                              src={images[imageKey(side)]}
+                              alt={AREA_LABELS[side]}
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <GarmentEditor
+                    key={`${form.productId}-${form.garmentSource}`}
+                    ref={editor}
+                    product={fromInventory ? product : null}
+                    customerGarmentImages={images}
+                    customizationSide={form.customizationSide}
+                    initialElements={elements}
+                    onElementsChange={setElements}
+                  />
+                </section>
+                <section className="order-section">
+                  <h3>5 Validación inteligente</h3>
+                  <p>
+                    Valida el diseño actual antes de guardar con el check
+                    amarillo.
+                  </p>
+                  <button
+                    type="button"
+                    className="ai-validation-button"
+                    disabled={loadingAI || saving}
+                    onClick={validateAI}
+                  >
+                    {loadingAI
+                      ? 'Analizando personalización...'
+                      : '✦ Validar personalización con IA'}
+                  </button>
+                  {aiCurrent && (
+                    <OrderAIValidationDetails
+                      validation={ai.result}
+                      validatedAt={ai.at}
+                    />
+                  )}
+                </section>
+              </>
+            ) : (
+              <section className="order-section">
+                <h3>4 Imágenes para la cotización</h3>
+                <p>Agrega hasta 8 imágenes. Se incluirán en el PDF.</p>
+                <input
+                  type="file"
+                  className="form-control"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={uploadReferences}
+                />
+                <div className="reference-list">
+                  {attachments.map((src, i) => (
+                    <div key={`${src}-${i}`}>
+                      <img
+                        className="reference-thumb"
+                        src={src}
+                        alt={`Referencia ${i + 1}`}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm"
+                        onClick={() =>
+                          setAttachments((prev) =>
+                            prev.filter((_, index) => index !== i),
+                          )
+                        }
+                      >
+                        Quitar imagen {i + 1}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            <div className="d-flex gap-2 mb-4">
+              <button
+                type="submit"
+                className="btn btn-warning"
+                disabled={saving || loadingAI}
               >
-                Riesgo{' '}
-                {aiResult.riskLevel ||
-                  'no definido'}
-              </span>
+                {saving ? 'Guardando...' : '✓ Guardar pedido'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={() => navigate('/historial')}
+              >
+                Cancelar
+              </button>
             </div>
-
-            <div className="ai-result-grid">
-
-              <div className="ai-result-item">
-                <span>
-                  Compatibilidad técnica
-                </span>
-
-                <strong>
-                  {aiResult.techniqueCompatibility ||
-                    'No especificado'}
-                </strong>
-              </div>
-
-              <div className="ai-result-item">
-                <span>
-                  Ubicación detectada
-                </span>
-
-                <strong>
-                  {aiResult.detectedPlacement ||
-                    'No detectada'}
-                </strong>
-              </div>
-
-              <div className="ai-result-item">
-                <span>
-                  Proporción visual
-                </span>
-
-                <strong>
-                  {aiResult.visualFit ||
-                    'No especificada'}
-                </strong>
-              </div>
-
-              <div className="ai-result-item">
-                <span>
-                  Colores de producción
-                </span>
-
-                <strong>
-                  {aiResult.productionColors?.length > 0
-                    ? aiResult.productionColors.join(
-                        ', '
-                      )
-                    : 'No especificados'}
-                </strong>
-              </div>
-
-            </div>
-
-            <div className="ai-detail-block">
-              <h5>
-                Recomendación general
-              </h5>
-
-              <p>
-                {aiResult.recommendation ||
-                  'Sin recomendación'}
-              </p>
-            </div>
-
-            <div className="ai-detail-block">
-              <h5>
-                Mensaje para el cliente
-              </h5>
-
-              <p>
-                {aiResult.clientMessage ||
-                  'Sin mensaje'}
-              </p>
-            </div>
-
-            <div className="ai-detail-block">
-              <h5>
-                Nota para producción
-              </h5>
-
-              <p>
-                {aiResult.productionNote ||
-                  'Sin nota'}
-              </p>
-            </div>
-
-            <div className="row g-3">
-
-              <div className="col-12 col-lg-6">
-                <div className="ai-list-block">
-                  <h5>
-                    Tamaños recomendados
-                  </h5>
-
-                  <ul>
-                    {aiResult.recommendedSizes?.length > 0 ? (
-                      aiResult.recommendedSizes.map(
-                        (
-                          item,
-                          index
-                        ) => (
-                          <li key={index}>
-                            <strong>
-                              {item.element}
-                            </strong>
-
-                            {' — '}
-
-                            {
-                              item.recommendedSize
-                            }
-
-                            {item.note
-                              ? ` · ${item.note}`
-                              : ''}
-                          </li>
-                        )
-                      )
-                    ) : (
-                      <li>
-                        No definidos
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-
-              <div className="col-12 col-lg-6">
-                <div className="ai-list-block">
-                  <h5>
-                    Advertencias
-                  </h5>
-
-                  <ul>
-                    {aiResult.warnings?.length > 0 ? (
-                      aiResult.warnings.map(
-                        (
-                          warning,
-                          index
-                        ) => (
-                          <li key={index}>
-                            {warning}
-                          </li>
-                        )
-                      )
-                    ) : (
-                      <li>
-                        Sin advertencias
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
+          </>
         )}
-      </section>
-
-    </div>
+      </fieldset>
+    </form>
   )
 }
-
-export default CreateOrderPage
+function Field({ label, onChange, ...props }) {
+  return (
+    <label className="col-md-6">
+      {label}
+      <input
+        className="form-control"
+        {...props}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  )
+}

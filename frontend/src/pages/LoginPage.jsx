@@ -6,7 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 
 import { auth } from '../firebase/config'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { notify } from '../services/toastStore'
 import logo from '../assets/brand/arte-grafia-logo.png'
 import '../styles/LoginPage.css'

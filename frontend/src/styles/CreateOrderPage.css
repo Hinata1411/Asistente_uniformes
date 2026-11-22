@@ -98,9 +98,12 @@
   right: 28px;
   z-index: 1000;
 
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
   border: none;
 
   background: var(--brand-gold, #ffc603);
@@ -159,8 +162,10 @@
     top: auto;
     bottom: 24px;
     right: 20px;
-    width: 56px;
-    height: 56px;
+  }
+
+  .order-cancel-actions {
+    padding-bottom: 64px;
   }
 }
 

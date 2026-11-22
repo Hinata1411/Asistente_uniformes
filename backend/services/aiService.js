@@ -8,7 +8,10 @@ const VALID_TECHNIQUES = [
 const VALID_SIDES = [
   'frente',
   'espalda',
-  'ambos'
+  'ambos',
+  'manga_izquierda',
+  'manga_derecha',
+  'mangas'
 ]
 
 const normalizeText = (value) => {
@@ -118,7 +121,7 @@ export const validateBasicRules = ({
     )
   ) {
     warnings.push(
-      'Debe seleccionar frente, espalda o ambos.'
+      'Selecciona un área de personalización válida, incluidas mangas cuando corresponda.'
     )
 
     riskLevel = 'alto'

@@ -1,0 +1,116 @@
+.business-page {
+  max-width: 1200px;
+  margin: auto;
+}
+.business-form fieldset {
+  min-width: 0;
+}
+.business-page h2 {
+  margin-bottom: 24px;
+}
+.business-page form,
+.business-page .data-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.business-page label,
+.business-form label {
+  font-weight: 500;
+}
+.business-page input,
+.business-page select,
+.business-page textarea,
+.business-form input,
+.business-form select,
+.business-form textarea {
+  margin-top: 6px;
+}
+.category-options {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.category-option {
+  padding: 20px 30px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex: 1;
+}
+.category-option.selected {
+  border-color: #e0ad00;
+  background: #fff8d8;
+}
+.reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 20px;
+}
+.reference-list > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reference-thumb {
+  display: block;
+  max-height: 190px;
+  max-width: 100%;
+  object-fit: contain;
+  margin: 10px 0;
+  border-radius: 8px;
+}
+.business-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin: 24px 0;
+}
+.business-metrics article {
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-top: 4px solid #edbf00;
+  border-radius: 14px;
+}
+.business-metrics strong {
+  font-size: 1.7rem;
+  display: block;
+}
+.business-page table td {
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.business-page .table-responsive {
+  border-radius: 12px;
+}
+.business-page .row {
+  row-gap: 14px;
+}
+.business-page .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.business-page .empty {
+  padding: 28px;
+  text-align: center;
+  color: #6b7280;
+}
+@media (max-width: 720px) {
+  .business-metrics {
+    grid-template-columns: 1fr;
+  }
+  .category-option {
+    padding: 16px;
+  }
+  .business-page form {
+    padding: 16px;
+  }
+}

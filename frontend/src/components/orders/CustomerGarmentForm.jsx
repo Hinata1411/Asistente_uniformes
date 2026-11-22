@@ -111,14 +111,9 @@ function CustomerGarmentForm({
               Seleccione
             </option>
 
-            <option value="XS">XS</option>
-            <option value="S">S</option>
-            <option value="M">M</option>
-            <option value="L">L</option>
-            <option value="XL">XL</option>
-            <option value="2XL">2XL</option>
-            <option value="3XL">3XL</option>
-            <option value="Otro">Otra</option>
+            {['2', '4', '6', '7', '10', '12', '14', '16', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'].map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
           </select>
         </div>
 

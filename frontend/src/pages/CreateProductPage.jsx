@@ -1,3 +1,4 @@
+import { useInventoryTypes } from '../components/InventoryTypes'
 import { useEffect, useState } from 'react'
 import {
   useLocation,
@@ -14,7 +15,8 @@ import {
 import {
   ref,
   uploadBytes,
-  getDownloadURL
+  getDownloadURL,
+  deleteObject
 } from 'firebase/storage'
 
 import {
@@ -42,6 +44,7 @@ function CreateProductPage() {
     Boolean(id)
 
   const [form, setForm] = useState({
+    category: 'prenda',
     name: '',
     type: '',
     color: '',
@@ -51,6 +54,10 @@ function CreateProductPage() {
     availableSides: [],
     allowedTechniques: []
   })
+
+  const isGarment = form.category === 'prenda'
+  const { types, loading: loadingTypes, error: typesError } = useInventoryTypes(form.category)
+  const availableTypes = types.filter(type => !type.inactive || type.id === form.type)
 
   const [
     frontImageFile,
@@ -82,12 +89,20 @@ function CreateProductPage() {
     setLoadingProduct
   ] = useState(isEditing)
 
-  const sizeOptions = [
-    'S',
-    'M',
-    'L',
-    'XL'
+  const sizeOptions = ['2', '4', '6', '8', '10', '12', '14', '16', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL']
+  const legacyMultiSize = isEditing && form.sizes.length > 1
+  const [sleeveFiles, setSleeveFiles] = useState({})
+  const [sleeveImages, setSleeveImages] = useState({})
+  const sleeves = [
+    { value: 'manga_izquierda', label: 'Manga izquierda' },
+    { value: 'manga_derecha', label: 'Manga derecha' }
   ]
+  const showFrontImage = !isGarment || form.availableSides.some(side => side === 'frente' || side === 'ambos')
+  const showBackImage = isGarment && form.availableSides.some(side => side === 'espalda' || side === 'ambos')
+  const [savedMainImages, setSavedMainImages] = useState({ front: '', back: '' })
+  const requiredSleeves = isGarment ? sleeves.filter(({ value }) =>
+    form.availableSides.includes(value) || form.availableSides.includes('mangas')
+  ) : []
 
   const sideOptions = [
     {
@@ -101,7 +116,9 @@ function CreateProductPage() {
     {
       value: 'ambos',
       label: 'Frente y espalda'
-    }
+    },
+    ...sleeves,
+    { value: 'mangas', label: 'Ambas mangas' }
   ]
 
   const techniqueOptions = [
@@ -155,6 +172,7 @@ function CreateProductPage() {
         }
 
         setForm({
+          category: productData.category || 'prenda',
           name:
             productData.name || '',
 
@@ -174,12 +192,9 @@ function CreateProductPage() {
               productData.price || 0
             ),
 
-          sizes:
-            Array.isArray(
-              productData.sizes
-            )
-              ? productData.sizes
-              : [],
+          sizes: productData.size
+            ? [String(productData.size)]
+            : Array.isArray(productData.sizes) ? productData.sizes.map(String) : [],
 
           availableSides:
             Array.isArray(
@@ -205,6 +220,12 @@ function CreateProductPage() {
           productData.images?.espalda ||
           productData.backImage ||
           ''
+
+        setSavedMainImages({ front: frontImage, back: backImage })
+        setSleeveImages({
+          manga_izquierda: productData.images?.manga_izquierda || '',
+          manga_derecha: productData.images?.manga_derecha || ''
+        })
 
         setFrontPreview(
           frontImage
@@ -366,7 +387,8 @@ function CreateProductPage() {
   const uploadProductImage =
     async (
       file,
-      side
+      side,
+      uploaded
     ) => {
       if (!file) {
         return ''
@@ -391,6 +413,7 @@ function CreateProductPage() {
         imageRef,
         file
       )
+      uploaded.push(imageRef)
 
       const downloadURL =
         await getDownloadURL(
@@ -406,15 +429,17 @@ function CreateProductPage() {
     e.preventDefault()
 
     if (
-      !form.name ||
-      !form.type ||
-      !form.color ||
+      !form.name.trim() ||
+      !form.type.trim() ||
       form.stock < 0 ||
       !form.price ||
       Number(form.price) <= 0 ||
-      form.sizes.length === 0 ||
-      form.availableSides.length === 0 ||
-      form.allowedTechniques.length === 0
+      (isGarment && (
+        !form.color.trim() ||
+        form.sizes.length === 0 ||
+        form.availableSides.length === 0 ||
+        form.allowedTechniques.length === 0
+      ))
     ) {
       notify(
         'Completa todos los campos obligatorios',
@@ -424,10 +449,7 @@ function CreateProductPage() {
       return
     }
 
-    if (
-      !isEditing &&
-      !frontImageFile
-    ) {
+    if (showFrontImage && !frontImageFile && !savedMainImages.front) {
       notify(
         'Selecciona la imagen frontal del producto',
         'warning'
@@ -436,41 +458,57 @@ function CreateProductPage() {
       return
     }
 
+    if (showBackImage && !backImageFile && !savedMainImages.back) {
+      notify('Selecciona la imagen trasera del producto', 'warning')
+      return
+    }
+
+    const missingSleeve = requiredSleeves.find(({ value }) => !sleeveFiles[value] && !sleeveImages[value])
+    if (missingSleeve) {
+      notify('Agrega la foto de ' + missingSleeve.label.toLowerCase() + '.', 'warning')
+      return
+    }
+
+    const uploaded = []
+    let saved = false
     try {
       setLoading(true)
 
-      let frontImageUrl =
-        frontPreview
+      let frontImageUrl = savedMainImages.front
+      let backImageUrl = savedMainImages.back
 
-      let backImageUrl =
-        backPreview
-
-      if (
-        frontImageFile
-      ) {
+      if (showFrontImage && frontImageFile) {
         frontImageUrl =
           await uploadProductImage(
             frontImageFile,
-            'front'
+            'front',
+            uploaded
           )
       }
 
-      if (
-        backImageFile
-      ) {
+      if (showBackImage && backImageFile) {
         backImageUrl =
           await uploadProductImage(
             backImageFile,
-            'back'
+            'back',
+            uploaded
           )
       }
 
+      const savedSleeves = { ...sleeveImages }
+      for (const { value } of requiredSleeves) {
+        if (sleeveFiles[value]) {
+          savedSleeves[value] = await uploadProductImage(sleeveFiles[value], value, uploaded)
+        }
+      }
+
       const productData = {
+        category: form.category,
         name:
           form.name.trim(),
 
         type:
-          form.type,
+          form.type.trim(),
 
         color:
           form.color.trim(),
@@ -485,16 +523,18 @@ function CreateProductPage() {
             form.price
           ),
 
+        size: isGarment && form.sizes.length === 1 ? form.sizes[0] : '',
         sizes:
-          form.sizes,
+          isGarment ? form.sizes : [],
 
         availableSides:
-          form.availableSides,
+          isGarment ? form.availableSides : [],
 
         allowedTechniques:
-          form.allowedTechniques,
+          isGarment ? form.allowedTechniques : [],
 
         images: {
+          ...(isGarment ? savedSleeves : {}),
           frente:
             frontImageUrl,
 
@@ -523,6 +563,7 @@ function CreateProductPage() {
           productData
         )
 
+        saved = true
         notify(
           'Producto actualizado correctamente',
           'success'
@@ -536,6 +577,7 @@ function CreateProductPage() {
               .toISOString()
         })
 
+        saved = true
         notify(
           'Producto registrado correctamente',
           'success'
@@ -546,6 +588,7 @@ function CreateProductPage() {
         '/productos'
       )
     } catch (error) {
+      if (!saved) await Promise.allSettled(uploaded.map(imageRef => deleteObject(imageRef)))
       console.error(
         isEditing
           ? 'Error actualizando producto:'
@@ -580,8 +623,8 @@ function CreateProductPage() {
       <div className="mb-4">
         <h2 className="page-title">
           {isEditing
-            ? 'Editar producto'
-            : 'Nuevo producto'}
+            ? 'Editar artículo'
+            : 'Nuevo artículo'}
         </h2>
 
         <p className="page-subtitle">
@@ -599,11 +642,28 @@ function CreateProductPage() {
       >
         <div className="row g-3">
 
+          <label className="col-12 col-md-3">
+            Categoría
+            <select
+              className="form-select"
+              value={form.category}
+              disabled={isEditing}
+              onChange={(e) => setForm((previous) => ({
+                ...previous,
+                category: e.target.value,
+                type: ''
+              }))}
+            >
+              <option value="prenda">Prenda</option>
+              <option value="producto">Producto</option>
+            </select>
+          </label>
+
           {/* NOMBRE */}
 
           <div className="col-12 col-md-6">
             <label className="form-label">
-              Nombre del producto
+              Nombre del artículo
             </label>
 
             <input
@@ -619,7 +679,7 @@ function CreateProductPage() {
                     e.target.value
                 })
               }
-              placeholder="Ej. Jersey Enduro Pro"
+              placeholder={isGarment ? 'Ej. Jersey Enduro Pro' : 'Ej. Taza blanca'}
               required
             />
           </div>
@@ -631,60 +691,25 @@ function CreateProductPage() {
               Tipo
             </label>
 
-            <select
-              className="form-select"
-              value={
-                form.type
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  type:
-                    e.target.value
-                })
-              }
-              required
-            >
-              <option value="">
-                Seleccione
-              </option>
-
-              <option value="playera">
-                Playera
-              </option>
-
-              <option value="polo">
-                Playera Polo
-              </option>
-
-              <option value="camisa_columbia">
-                Camisa Columbia
-              </option>
-
-              <option value="jersey">
-                Jersey
-              </option>
-
-              <option value="uniforme_futbol">
-                Uniforme de fútbol
-              </option>
-
-              <option value="pantalon">
-                Pantalón
-              </option>
-
-              <option value="short">
-                Short
-              </option>
-
-              <option value="kit">
-                Kit / Conjunto
-              </option>
-
-              <option value="otro">
-                Otro
-              </option>
-            </select>
+            {typesError && !isGarment ? (
+              <input className="form-control" aria-label="Tipo" value={form.type}
+                onChange={event => setForm(previous => ({ ...previous, type: event.target.value }))}
+                required />
+            ) : (
+              <select className="form-select" aria-label="Tipo" value={form.type}
+                onChange={event => setForm(previous => ({ ...previous, type: event.target.value }))} required>
+                <option value="">Seleccione</option>
+                {form.type && !availableTypes.some(type => type.id === form.type) && (
+                  <option value={form.type}>{form.type}</option>
+                )}
+                {availableTypes.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
+              </select>
+            )}
+            {loadingTypes && <div className="form-text">Cargando tipos...</div>}
+            {typesError && <div className="form-text">El navegador no pudo abrir la lista de tipos.</div>}
+            {!loadingTypes && !typesError && availableTypes.length === 0 && (
+              <div className="form-text">Agrega un tipo desde Inventario → Editar tipos.</div>
+            )}
           </div>
 
           {/* STOCK */}
@@ -761,225 +786,231 @@ function CreateProductPage() {
                 })
               }
               placeholder="Ej. Negro"
-              required
+              required={isGarment}
             />
           </div>
 
-          {/* TALLAS */}
-
-          <div className="col-12 col-md-8">
-            <label className="form-label">
-              Tallas disponibles
-            </label>
-
-            <div className="option-group">
-              {sizeOptions.map(
-                (size) => (
-                  <label
-                    key={
-                      size
-                    }
-                    className="option-check"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.sizes.includes(
-                          size
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'sizes',
-                          size
-                        )
-                      }
-                    />
-
-                    <span>
-                      {size}
+          {isGarment && (
+            <>
+              <label className="col-12 col-md-6">
+                Talla disponible
+                {legacyMultiSize ? (
+                  <>
+                    <input className="form-control" value={form.sizes.join(', ')} readOnly />
+                    <span className="form-text">
+                      Este artículo comparte stock entre varias tallas. Crea un artículo por talla con sus existencias reales.
                     </span>
-                  </label>
-                )
-              )}
-            </div>
-          </div>
+                  </>
+                ) : (
+                  <select className="form-select" value={form.sizes[0] || ''} required
+                    onChange={event => setForm(previous => ({
+                      ...previous,
+                      sizes: event.target.value ? [event.target.value] : []
+                    }))}>
+                    <option value="">Seleccione una talla</option>
+                    {form.sizes[0] && !sizeOptions.includes(form.sizes[0]) && (
+                      <option value={form.sizes[0]}>{form.sizes[0]}</option>
+                    )}
+                    {sizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                )}
+              </label>
 
-          {/* ÁREAS */}
+              {/* ÁREAS */}
 
-          <div className="col-12">
-            <label className="form-label">
-              Áreas disponibles para personalización
-            </label>
+              <div className="col-12">
+                <label className="form-label">
+                  Áreas disponibles para personalización
+                </label>
 
-            <div className="option-group">
-              {sideOptions.map(
-                (side) => (
-                  <label
-                    key={
-                      side.value
-                    }
-                    className="option-check"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.availableSides.includes(
+                <div className="option-group">
+                  {sideOptions.map(
+                    (side) => (
+                      <label
+                        key={
                           side.value
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'availableSides',
-                          side.value
-                        )
-                      }
-                    />
+                        }
+                        className="option-check"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            form.availableSides.includes(
+                              side.value
+                            )
+                          }
+                          onChange={() =>
+                            toggleArrayValue(
+                              'availableSides',
+                              side.value
+                            )
+                          }
+                        />
 
-                    <span>
-                      {side.label}
-                    </span>
-                  </label>
-                )
-              )}
-            </div>
-          </div>
+                        <span>
+                          {side.label}
+                        </span>
+                      </label>
+                    )
+                  )}
+                </div>
+              </div>
 
-          {/* TÉCNICAS */}
+              {/* TÉCNICAS */}
 
-          <div className="col-12">
-            <label className="form-label">
-              Técnicas permitidas
-            </label>
+              <div className="col-12">
+                <label className="form-label">
+                  Técnicas permitidas
+                </label>
 
-            <div className="option-group">
-              {techniqueOptions.map(
-                (
-                  technique
-                ) => (
-                  <label
-                    key={
+                <div className="option-group">
+                  {techniqueOptions.map(
+                    (
                       technique
-                    }
-                    className="option-check"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.allowedTechniques.includes(
+                    ) => (
+                      <label
+                        key={
                           technique
-                        )
-                      }
-                      onChange={() =>
-                        toggleArrayValue(
-                          'allowedTechniques',
-                          technique
-                        )
-                      }
-                    />
+                        }
+                        className="option-check"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            form.allowedTechniques.includes(
+                              technique
+                            )
+                          }
+                          onChange={() =>
+                            toggleArrayValue(
+                              'allowedTechniques',
+                              technique
+                            )
+                          }
+                        />
 
-                    <span>
-                      {technique}
-                    </span>
-                  </label>
-                )
+                        <span>
+                          {technique}
+                        </span>
+                      </label>
+                    )
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {showFrontImage && (
+            <div className="col-12 col-md-6">
+              <label className="form-label">
+                Imagen frontal
+              </label>
+
+              <input
+                type="file"
+                className="form-control"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={
+                  handleFrontImage
+                }
+              />
+
+              <div className="form-text">
+                {isEditing
+                  ? 'Selecciona una nueva imagen únicamente si deseas reemplazar la actual.'
+                  : 'PNG, JPG o WEBP. Máximo 5 MB.'}
+              </div>
+
+              {frontPreview && (
+                <div className="mt-3">
+                  <img
+                    src={
+                      frontPreview
+                    }
+                    alt="Vista previa frontal"
+                    style={{
+                      width:
+                        '100%',
+
+                      maxHeight:
+                        '250px',
+
+                      objectFit:
+                        'contain',
+
+                      borderRadius:
+                        '8px'
+                    }}
+                  />
+                </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* IMAGEN FRONTAL */}
+          {showBackImage && (
+            <div className="col-12 col-md-6">
+              <label className="form-label">
+                Imagen trasera
+              </label>
 
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Imagen frontal
-            </label>
+              <input
+                type="file"
+                className="form-control"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={
+                  handleBackImage
+                }
+              />
 
-            <input
-              type="file"
-              className="form-control"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={
-                handleFrontImage
-              }
-            />
-
-            <div className="form-text">
-              {isEditing
-                ? 'Selecciona una nueva imagen únicamente si deseas reemplazar la actual.'
-                : 'PNG, JPG o WEBP. Máximo 5 MB.'}
-            </div>
-
-            {frontPreview && (
-              <div className="mt-3">
-                <img
-                  src={
-                    frontPreview
-                  }
-                  alt="Vista previa frontal"
-                  style={{
-                    width:
-                      '100%',
-
-                    maxHeight:
-                      '250px',
-
-                    objectFit:
-                      'contain',
-
-                    borderRadius:
-                      '8px'
-                  }}
-                />
+              <div className="form-text">
+                {isEditing
+                  ? 'Opcional. Selecciona otra imagen si deseas reemplazar la actual.'
+                  : 'PNG, JPG o WEBP. Máximo 5 MB.'}
               </div>
-            )}
-          </div>
 
-          {/* IMAGEN TRASERA */}
+              {backPreview && (
+                <div className="mt-3">
+                  <img
+                    src={
+                      backPreview
+                    }
+                    alt="Vista previa trasera"
+                    style={{
+                      width:
+                        '100%',
 
-          <div className="col-12 col-md-6">
-            <label className="form-label">
-              Imagen trasera
-            </label>
+                      maxHeight:
+                        '250px',
 
-            <input
-              type="file"
-              className="form-control"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={
-                handleBackImage
-              }
-            />
+                      objectFit:
+                        'contain',
 
-            <div className="form-text">
-              {isEditing
-                ? 'Opcional. Selecciona otra imagen si deseas reemplazar la actual.'
-                : 'Opcional. PNG, JPG o WEBP. Máximo 5 MB.'}
+                      borderRadius:
+                        '8px'
+                    }}
+                  />
+                </div>
+              )}
             </div>
+          )}
 
-            {backPreview && (
-              <div className="mt-3">
-                <img
-                  src={
-                    backPreview
+          {requiredSleeves.map(({ value, label }) => (
+            <label key={value} className="col-12 col-md-6">
+              Foto de {label.toLowerCase()}
+              <input type="file" className="form-control" accept="image/png,image/jpeg,image/webp"
+                required={!sleeveImages[value] && !sleeveFiles[value]}
+                onChange={event => {
+                  const file = event.target.files?.[0]
+                  if (file && !validateImage(file)) {
+                    event.target.value = ''
+                    return
                   }
-                  alt="Vista previa trasera"
-                  style={{
-                    width:
-                      '100%',
-
-                    maxHeight:
-                      '250px',
-
-                    objectFit:
-                      'contain',
-
-                    borderRadius:
-                      '8px'
-                  }}
-                />
-              </div>
-            )}
-          </div>
+                  setSleeveFiles(previous => ({ ...previous, [value]: file }))
+                }} />
+              {sleeveImages[value] && <img className="img-thumbnail mt-2" width="160"
+                src={sleeveImages[value]} alt={label} />}
+            </label>
+          ))}
 
         </div>
 

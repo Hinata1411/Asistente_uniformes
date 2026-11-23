@@ -1,3 +1,4 @@
+import InventoryTypeEditor, { useInventoryTypes } from '../components/InventoryTypes'
 import { useEffect, useState } from 'react'
 import {
   Link,
@@ -22,6 +23,14 @@ function ProductsPage() {
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [category, setCategory] = useState('')
+  const [editingTypes, setEditingTypes] = useState(false)
+  const { types: garmentTypes } = useInventoryTypes('prenda')
+  const { types: productTypes } = useInventoryTypes('producto')
+  const visibleProducts = category
+    ? products.filter((product) => (product.category || 'prenda') === category)
+    : products
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -40,9 +49,10 @@ function ProductsPage() {
         setProducts(productsData)
       } catch (error) {
         console.error(
-          'Error cargando productos:',
+          'Error cargando inventario:',
           error
         )
+        setLoadError(true)
       } finally {
         setLoading(false)
       }
@@ -192,7 +202,7 @@ function ProductsPage() {
       <div className="products-header">
         <div>
           <h2 className="page-title">
-            Productos e inventario
+            Inventario
           </h2>
 
           <p className="page-subtitle">
@@ -202,29 +212,61 @@ function ProductsPage() {
           </p>
         </div>
 
-        <Link
-          to="/productos/nuevo"
-          className="btn btn-primary"
-        >
-          + Nuevo producto
-        </Link>
+        <div className="d-flex flex-wrap gap-2">
+          <button type="button" className="btn btn-outline-secondary" aria-expanded={editingTypes}
+            onClick={() => setEditingTypes(value => !value)}>
+            Editar tipos
+          </button>
+          <Link
+            to="/productos/nuevo"
+            className="btn btn-primary"
+          >
+            + Nuevo artículo
+          </Link>
+        </div>
       </div>
+
+      {editingTypes && <InventoryTypeEditor onClose={() => setEditingTypes(false)} />}
+
+      <div className="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filtrar inventario por categoría">
+        {[
+          ['', 'Todos'],
+          ['prenda', 'Prendas'],
+          ['producto', 'Productos']
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`btn ${category === value ? 'btn-primary' : 'btn-outline-secondary'}`}
+            aria-pressed={category === value}
+            onClick={() => setCategory(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loadError && (
+        <p role="alert" className="alert alert-danger">No se pudo cargar el inventario.</p>
+      )}
 
       {loading && (
         <div className="text-muted mb-3">
-          Cargando productos...
+          Cargando inventario...
         </div>
       )}
 
       <div className="products-grid">
-        {products.map((product) => (
+        {visibleProducts.map((product) => (
           <article
             key={product.id}
             className="product-card"
           >
             <div className="product-image-wrapper">
               <img
-                src={product.images?.frente}
+                src={product.images?.frente || product.images?.espalda ||
+                  product.images?.manga_izquierda || product.images?.manga_derecha ||
+                  product.frontImage || product.backImage || undefined}
                 alt={product.name}
                 className="product-image"
               />
@@ -235,14 +277,15 @@ function ProductsPage() {
               <div className="product-title-row">
                 <div>
                   <span className="product-type">
-                    {product.type}
+                    {product.category === 'producto' ? 'Producto' : 'Prenda'}
+                    {product.type && ` · ${(product.category === 'producto' ? productTypes : garmentTypes).find(type => type.id === product.type)?.label || product.type}`}
                   </span>
 
                   <h3>
                     {product.name}
                   </h3>
                   <div className="product-price">
-                    Q{Number(product.price || 0).toFixed(2)}
+                    Q{Number(product.price ?? product.basePrice ?? 0).toFixed(2)}
                   </div>
                   <span
                     className={`badge ${
@@ -323,44 +366,50 @@ function ProductsPage() {
                   </strong>
                 </div>
 
-                <div>
-                  <span className="product-info-label">
-                    Tallas
-                  </span>
+                {product.category !== 'producto' && (
+                  <>
+                    <div>
+                      <span className="product-info-label">
+                        Tallas
+                      </span>
 
-                  <strong>
-                    {product.sizes?.length > 0
-                      ? product.sizes.join(', ')
-                      : 'No definidas'}
-                  </strong>
-                </div>
+                      <strong>
+                        {product.size || (product.sizes?.length > 0
+                          ? product.sizes.join(', ')
+                          : 'No definidas')}
+                      </strong>
+                    </div>
 
-                <div>
-                  <span className="product-info-label">
-                    Personalización
-                  </span>
+                    <div>
+                      <span className="product-info-label">
+                        Personalización
+                      </span>
 
-                  <strong>
-                    {product.availableSides?.length > 0
-                      ? product.availableSides
-                          .map((side) =>
-                            side === 'frente'
-                              ? 'Frente'
-                              : side === 'espalda'
-                                ? 'Espalda'
-                                : 'Ambos'
-                          )
-                          .join(', ')
-                      : 'No definida'}
-                  </strong>
-                </div>
+                      <strong>
+                        {product.availableSides?.length > 0
+                          ? product.availableSides
+                              .map(side => ({
+                                frente: 'Frente',
+                                espalda: 'Espalda',
+                                ambos: 'Frente y espalda',
+                                manga_izquierda: 'Manga izquierda',
+                                manga_derecha: 'Manga derecha',
+                                mangas: 'Ambas mangas'
+                              })[side] || side)
+                              .join(', ')
+                          : 'No definida'}
+                      </strong>
+                    </div>
+
+                  </>
+                )}
 
               </div>
 
               <div className="product-techniques">
-                <span className="product-info-label">
-                  Técnicas permitidas
-                </span>
+                {product.category !== 'producto' && (
+                  <span className="product-info-label">Técnicas permitidas</span>
+                )}
 
                 <div className="d-flex justify-content-end gap-2 mt-3">
                   <button
@@ -408,24 +457,26 @@ function ProductsPage() {
 
                 </div>
                 
-                <div className="technique-list">
-                  {product.allowedTechniques?.length > 0 ? (
-                    product.allowedTechniques.map(
-                      (technique) => (
-                        <span
-                          key={technique}
-                          className="technique-tag"
-                        >
-                          {technique}
-                        </span>
+                {product.category !== 'producto' && (
+                  <div className="technique-list">
+                    {product.allowedTechniques?.length > 0 ? (
+                      product.allowedTechniques.map(
+                        (technique) => (
+                          <span
+                            key={technique}
+                            className="technique-tag"
+                          >
+                            {technique}
+                          </span>
+                        )
                       )
-                    )
-                  ) : (
-                    <span className="text-muted small">
-                      No hay técnicas configuradas.
-                    </span>
-                  )}
-                </div>
+                    ) : (
+                      <span className="text-muted small">
+                        No hay técnicas configuradas.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -433,9 +484,9 @@ function ProductsPage() {
         ))}
       </div>
 
-      {!loading && products.length === 0 && (
+      {!loading && !loadError && visibleProducts.length === 0 && (
         <div className="empty-products">
-          No hay productos registrados.
+          No hay artículos en esta vista.
         </div>
       )}
 

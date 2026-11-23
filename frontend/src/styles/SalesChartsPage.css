@@ -1,0 +1,36 @@
+.sales-charts { width: 100%; }
+.sales-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+.sales-filters label { font-size: .875rem; font-weight: 600; }
+.sales-filters label > * { margin-top: 4px; }
+.sales-metrics, .sales-panels { display: grid; gap: 12px; }
+.sales-metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+.sales-panels { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); align-items: start; }
+.sales-metric, .sales-panel { padding: 16px; min-width: 0; }
+.sales-metric strong { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.sales-metric-primary { background: #fff6d7; border: 1px solid var(--brand-gold, #ffc603); }
+.sales-periods, .sales-categories { list-style: none; padding: 0; margin: 0; }
+.sales-periods { max-height: 24rem; overflow: auto; }
+.sales-period { display: grid; grid-template-columns: minmax(5.25rem, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 0; font-size: .875rem; }
+.sales-period strong, .sales-categories strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sales-track { height: 10px; background: #efefef; border-radius: 99px; overflow: hidden; }
+.sales-fill { display: block; height: 100%; background: var(--brand-gold, #ffc603); border-radius: inherit; }
+.sales-fill-producto { background: #1a1a1a; }
+.sales-fill-publicidad { background: #a87916; }
+.sales-categories li + li { margin-top: 14px; }
+.sales-categories .sales-track { margin: 4px 0; }
+@media (max-width: 900px) { .sales-panels { grid-template-columns: minmax(0, 1fr); } }
+
+.sales-panel-stack { display: grid; gap: 12px; min-width: 0; }
+.sales-month-scroll { overflow-x: auto; padding-bottom: 4px; }
+.sales-month-scroll svg { display: block; min-width: 470px; width: 100%; }
+.sales-month-scroll text { fill: #57534e; font-size: 10px; }
+.sales-month-scroll .sales-month-excluded { fill: #a8a29e; }
+.sales-month-guide { stroke: #e7e5e4; stroke-width: 1; }
+.sales-month-line { stroke: #a87600; stroke-width: 2.5; fill: none; stroke-linejoin: round; }
+.sales-month-point { fill: var(--brand-gold, #ffc603); stroke: #755400; stroke-width: 1; cursor: pointer; }
+.sales-month-point:focus { stroke: #171717; stroke-width: 2; }

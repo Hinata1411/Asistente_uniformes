@@ -103,7 +103,16 @@ function OrderForm({ order }) {
   const fromInventory =
     !advertising && (!garment || form.garmentSource === 'inventory')
   const sides = areaKeys(form.customizationSide)
+  const quoteSides = sides.length ? sides : ['']
   const quantity = advertising ? 1 : Number(form.quantity)
+  const reservedQuantity = order && product && order.productId === product.id &&
+    (!order.garmentSource || order.garmentSource === 'inventory')
+      ? Number(order.quantity) || 0
+      : 0
+  const availableQuantity = fromInventory && product
+    ? Number(product.stock || 0) + reservedQuantity
+    : undefined
+  const exceedsStock = availableQuantity !== undefined && quantity > availableQuantity
   const usesSavedPrice = fromInventory && Boolean(product) &&
     order?.productId === product.id && Number(order.unitBasePrice) > 0
   const inventoryPrice = usesSavedPrice ? Number(order.unitBasePrice) : product?.price
@@ -111,7 +120,7 @@ function OrderForm({ order }) {
     ? Number(inventoryPrice ?? 0)
     : advertising ? Number(form.unitBasePrice || 0) : 0
   const surcharge = garment
-    ? sides.reduce((sum, s) => sum + Number(areaDetails[s]?.surcharge || 0), 0)
+    ? quoteSides.reduce((sum, s) => sum + Number(areaDetails[s]?.surcharge || 0), 0)
     : 0
   const unitPrice = money(base + surcharge),
     total = money(unitPrice * quantity)
@@ -139,6 +148,16 @@ function OrderForm({ order }) {
   }, [signature])
   const aiCurrent = ai?.signature === signature
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const selectCustomizationSide = (value) => {
+    const [firstSide] = areaKeys(value)
+    set('customizationSide', value)
+    if (firstSide) {
+      setAreaDetails((prev) => {
+        const { '': draft, ...details } = prev
+        return draft ? { ...details, [firstSide]: { ...draft, ...details[firstSide] } } : prev
+      })
+    }
+  }
   const selectProduct = (id) => {
     const p = products.find((p) => p.id === id)
     setForm((prev) => ({
@@ -183,6 +202,8 @@ function OrderForm({ order }) {
       throw new Error(
         'Selecciona un producto válido con inventario individual.',
       )
+    if (exceedsStock)
+      throw new Error(`La cantidad supera el stock disponible (${availableQuantity}).`)
     if (fromInventory && (!Number.isFinite(base) || base <= 0))
       throw new Error('El producto necesita un precio mayor a cero en el inventario.')
     if ((advertising && !validAmount(form.unitBasePrice)) || !Number.isFinite(total))
@@ -544,41 +565,44 @@ function OrderForm({ order }) {
                   </select>
                 </label>
               )}
-              {fromInventory && (
-                <>
-                  <label className="form-label d-block">
-                    Producto del inventario
-                    <select
-                      required
-                      className="form-select"
-                      value={form.productId}
-                      onChange={(e) => selectProduct(e.target.value)}
-                    >
-                      <option value="">Seleccione</option>
-                      {products.map((p) => (
-                        <option
-                          key={p.id}
-                          value={p.id}
-                          disabled={p.legacyMultiSize}
-                        >
-                          {p.name} / {p.size || p.color || ''} / Stock {p.stock}
-                          {p.legacyMultiSize ? ' — separar tallas' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {loadingProducts && <p>Cargando productos...</p>}
-                  {productsError && (
-                    <div className="alert alert-danger">
-                      No se pudo cargar el inventario.{' '}
-                      <button type="button" onClick={reloadProducts}>
-                        Reintentar
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
               <div className="row g-3">
+                {fromInventory && (
+                  <>
+                    <label className={garment ? 'col-md-6' : 'col-12'}>
+                      {garment ? 'Tipo de prenda' : 'Producto del inventario'}
+                      <select
+                        required
+                        className="form-select"
+                        value={form.productId}
+                        onChange={(e) => selectProduct(e.target.value)}
+                      >
+                        <option value="">Seleccione</option>
+                        {products.map((p) => (
+                          <option
+                            key={p.id}
+                            value={p.id}
+                            disabled={p.legacyMultiSize}
+                          >
+                            {p.name} / {p.size || p.color || ''} / Stock {p.stock}
+                            {p.legacyMultiSize ? ' — separar tallas' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {garment && (
+                      <Field label="Color de la prenda" value={product?.color || ''} readOnly />
+                    )}
+                    {loadingProducts && <p>Cargando productos...</p>}
+                    {productsError && (
+                      <div className="alert alert-danger">
+                        No se pudo cargar el inventario.{' '}
+                        <button type="button" onClick={reloadProducts}>
+                          Reintentar
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
                 {garment && !fromInventory && (
                   <>
                     <Field
@@ -611,8 +635,16 @@ function OrderForm({ order }) {
                     value={form.quantity}
                     onChange={(v) => set('quantity', v)}
                     min="1"
+                    max={availableQuantity}
                     step="1"
                     required
+                    aria-invalid={exceedsStock || undefined}
+                    hint={availableQuantity !== undefined && (
+                      <span className={exceedsStock ? 'form-text text-danger' : 'form-text'} aria-live="polite">
+                        {exceedsStock ? 'La cantidad supera el stock disponible. ' : ''}
+                        Disponibles para este pedido: {availableQuantity}.
+                      </span>
+                    )}
                   />
                 )}
                 {garment && (
@@ -641,7 +673,7 @@ function OrderForm({ order }) {
                         className="form-select"
                         value={form.customizationSide}
                         onChange={(e) =>
-                          set('customizationSide', e.target.value)
+                          selectCustomizationSide(e.target.value)
                         }
                       >
                         <option value="">Seleccione</option>
@@ -707,9 +739,9 @@ function OrderForm({ order }) {
                   />
                 )}
                 {garment &&
-                  sides.map((side) => (
+                  quoteSides.map((side) => (
                     <div key={side} className="col-12">
-                      <h6>{AREA_LABELS[side]}</h6>
+                      {side && <h6>{AREA_LABELS[side]}</h6>}
                       <div className="row g-2">
                         <Field
                           label="Tamaño de la personalización"
@@ -905,7 +937,7 @@ function OrderForm({ order }) {
     </form>
   )
 }
-function Field({ label, onChange, ...props }) {
+function Field({ label, onChange, hint, ...props }) {
   return (
     <label className="col-md-6">
       {label}
@@ -914,6 +946,7 @@ function Field({ label, onChange, ...props }) {
         {...props}
         onChange={onChange && ((e) => onChange(e.target.value))}
       />
+      {hint}
     </label>
   )
 }

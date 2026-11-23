@@ -2,6 +2,26 @@ rules_version = '2';
 // Reglas de seguridad de Cloud Firestore — Asistente de personalización de uniformes.
 // Principio: denegar por defecto y permitir solo a usuarios internos activos según su rol.
 service cloud.firestore {
+  match /databases/{database}/documents/inventoryTypes/{category} {
+    function inventoryUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function knownCategory() {
+      return category in ['prenda', 'producto'];
+    }
+
+    allow get: if request.auth != null && knownCategory()
+      && inventoryUser().role in ['admin', 'empleado']
+      && inventoryUser().get('active', true) == true;
+
+    allow create, update: if request.auth != null && knownCategory()
+      && inventoryUser().role == 'admin'
+      && inventoryUser().get('active', true) == true
+      && request.resource.data.keys().hasOnly(['types'])
+      && request.resource.data.types is list;
+  }
+
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }

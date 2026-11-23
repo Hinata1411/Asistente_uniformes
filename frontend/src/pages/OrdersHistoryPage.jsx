@@ -591,7 +591,7 @@ ${order.previewImage || 'No disponible'}
             <input
               type="text"
               className="form-control"
-              placeholder="Buscar por cliente o prenda..."
+              placeholder="Buscar por cliente o artículo..."
               value={search}
               onChange={(event) =>
                 setSearch(event.target.value)
@@ -627,9 +627,65 @@ ${order.previewImage || 'No disponible'}
       </div>
 
       {filteredOrders.map((order) => {
+        const isGarment = !order.category || order.category === 'prenda'
+        const usesProductLayout = order.category === 'producto' || order.category === 'publicidad'
+        const description = order.description?.trim()
+        const specifications = order.personalizationSize?.trim()
         const isCancelled = order.status === 'anulado'
         const isDelivered = order.status === 'entregado'
         const payment = getPaymentSummary(order)
+        const statusControl = (
+          <div className="history-status-change">
+            <label
+              className="history-status-eyebrow"
+              htmlFor={`history-status-select-${order.id}`}
+            >
+              Estado
+            </label>
+
+            <select
+              id={`history-status-select-${order.id}`}
+              className="form-select form-select-sm"
+              value={
+                order.status || 'pendiente_aprobacion'
+              }
+              disabled={isCancelled}
+              onChange={(event) =>
+                handleChangeStatus(
+                  order.id,
+                  event.target.value
+                )
+              }
+            >
+              <option value="pendiente_aprobacion">
+                Pendiente de aprobación
+              </option>
+              <option value="aprobado">
+                Aprobado
+              </option>
+              <option value="en_produccion">
+                En producción
+              </option>
+              {!usesProductLayout && (
+                <option value="en_arreglo">
+                  En arreglo / devolución
+                </option>
+              )}
+              {usesProductLayout && order.status === 'en_arreglo' && (
+                <option value="en_arreglo" disabled>Estado anterior</option>
+              )}
+              <option value="terminado">
+                Terminado
+              </option>
+              <option value="entregado">
+                Entregado
+              </option>
+              <option value="anulado">
+                Anulado
+              </option>
+            </select>
+          </div>
+        )
 
         return (
           <div
@@ -648,10 +704,10 @@ ${order.previewImage || 'No disponible'}
               </div>
 
               <div className="col-md-9">
-                <div className="card-body">
+                <div className="card-body pe-3">
                   <div className="history-card-heading">
                     <h5 className="card-title">{getProductName(order)}</h5>
-                    <AIValidationPopover order={order} />
+                    {isGarment && <AIValidationPopover order={order} />}
                   </div>
 
                   <div className="history-info-grid">
@@ -665,28 +721,34 @@ ${order.previewImage || 'No disponible'}
                       <strong>{order.phone || 'No definido'}</strong>
                     </div>
 
-                    <div>
-                      <span className="history-info-label">Talla</span>
-                      <strong>{order.size || 'No definida'}</strong>
-                    </div>
+                    {isGarment && (
+                      <div>
+                        <span className="history-info-label">Talla</span>
+                        <strong>{order.size || 'No definida'}</strong>
+                      </div>
+                    )}
 
                     <div>
                       <span className="history-info-label">Cantidad</span>
                       <strong>{order.quantity || 0}</strong>
                     </div>
 
-                    <div>
-                      <span className="history-info-label">Técnica</span>
-                      <strong>{order.technique || 'No definida'}</strong>
-                    </div>
+                    {isGarment && (
+                      <div>
+                        <span className="history-info-label">Técnica</span>
+                        <strong>{order.technique || 'No definida'}</strong>
+                      </div>
+                    )}
                   </div>
 
                   <div className="history-dates-row">
                     <span><strong>Fecha del pedido:</strong> {displayOrderDate(order.orderDate || order.createdAt)}</span>
                     <span><strong>Entrega prevista:</strong> {displayOrderDate(order.expectedDeliveryDate)}</span>
-                    <span><strong>Primera entrega real:</strong> {displayOrderDate(order.deliveredAt)}</span>
+                    {!usesProductLayout && (
+                      <span><strong>Primera entrega real:</strong> {displayOrderDate(order.deliveredAt)}</span>
+                    )}
                   </div>
-                  {Array.isArray(order.deliveryHistory) && order.deliveryHistory.length > 0 && (
+                  {!usesProductLayout && Array.isArray(order.deliveryHistory) && order.deliveryHistory.length > 0 && (
                     <details className="small mb-2">
                       <summary>Historial de entregas ({order.deliveryHistory.length})</summary>
                       <ul className="mt-2">
@@ -719,72 +781,49 @@ ${order.previewImage || 'No disponible'}
                       </span>
                     </div>
 
-                    {!isCancelled && !isDelivered && (
-                      <div className="history-payment-plan-row">
-                        <label className="small mb-0">
-                          <strong>Forma de pago:</strong>
-                        </label>
-                        <select
-                          className="form-select form-select-sm history-payment-plan-select"
-                          value={order.paymentPlan || 'anticipo_50'}
-                          onChange={(event) =>
-                            handleChangePaymentPlan(order, event.target.value)
-                          }
-                        >
-                          <option value="anticipo_50">Anticipo 50%</option>
-                          <option value="completo">Pago completo</option>
-                        </select>
+                    {(usesProductLayout || (!isCancelled && !isDelivered)) && (
+                      <div className="history-payment-plan-row column-gap-4">
+                        {!isCancelled && !isDelivered && (
+                          <div className="d-flex align-items-center gap-2">
+                            <label className="small mb-0 text-nowrap" htmlFor={`history-payment-plan-${order.id}`}>
+                              <strong>Forma de pago:</strong>
+                            </label>
+                            <select
+                              id={`history-payment-plan-${order.id}`}
+                              className="form-select form-select-sm history-payment-plan-select w-auto"
+                              value={order.paymentPlan || 'anticipo_50'}
+                              onChange={(event) => handleChangePaymentPlan(order, event.target.value)}
+                            >
+                              <option value="anticipo_50">Anticipo 50%</option>
+                              <option value="completo">Pago completo</option>
+                            </select>
+                          </div>
+                        )}
+                        {usesProductLayout && statusControl}
                       </div>
                     )}
                   </div>
 
-                  <div className="history-status-row">
-                    <div className="history-status-change">
-                      <label
-                        className="history-status-eyebrow"
-                        htmlFor={`history-status-select-${order.id}`}
-                      >
-                        Estado
-                      </label>
+                  {!usesProductLayout && (
+                    <div className="history-status-row">{statusControl}</div>
+                  )}
 
-                      <select
-                        id={`history-status-select-${order.id}`}
-                        className="form-select form-select-sm"
-                        value={
-                          order.status || 'pendiente_aprobacion'
-                        }
-                        disabled={isCancelled}
-                        onChange={(event) =>
-                          handleChangeStatus(
-                            order.id,
-                            event.target.value
-                          )
-                        }
-                      >
-                        <option value="pendiente_aprobacion">
-                          Pendiente de aprobación
-                        </option>
-                        <option value="aprobado">
-                          Aprobado
-                        </option>
-                        <option value="en_produccion">
-                          En producción
-                        </option>
-                        <option value="en_arreglo">
-                          En arreglo / devolución
-                        </option>
-                        <option value="terminado">
-                          Terminado
-                        </option>
-                        <option value="entregado">
-                          Entregado
-                        </option>
-                        <option value="anulado">
-                          Anulado
-                        </option>
-                      </select>
-                    </div>
-                  </div>
+                  {usesProductLayout && (description || specifications) && (
+                    <dl className="row g-2 mb-0 mt-1 px-2 py-1 small">
+                      {description && (
+                        <div className={specifications ? 'col-md-7' : 'col-12'}>
+                          <dt className="history-info-label">Descripción o comentario</dt>
+                          <dd className="text-break mb-0" style={{ whiteSpace: 'pre-wrap' }}>{description}</dd>
+                        </div>
+                      )}
+                      {specifications && (
+                        <div className={description ? 'col-md-5' : 'col-12'}>
+                          <dt className="history-info-label">Tamaño o especificaciones</dt>
+                          <dd className="text-break mb-0" style={{ whiteSpace: 'pre-wrap' }}>{specifications}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  )}
 
                   {isCancelled && (
                     <p className="history-cancel-reason">

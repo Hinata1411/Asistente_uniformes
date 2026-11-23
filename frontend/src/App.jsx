@@ -1,3 +1,6 @@
+import CatalogsPage from './pages/CatalogsPage'
+import SalesChartsPage from './pages/SalesChartsPage'
+import ExpensesPage from './pages/ExpensesPage'
 import { BrowserRouter,  Routes, Route, Navigate } from 'react-router-dom'
 
 import CreateOrderPage from './pages/CreateOrderPage'
@@ -69,6 +72,24 @@ function App() {
         />
 
         <Route
+          path="/gastos"
+          element={
+            <ProtectedLayout allowedRoles={['admin']}>
+              <ExpensesPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/graficas"
+          element={
+            <ProtectedLayout allowedRoles={['admin']}>
+              <SalesChartsPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
           path="/empleado"
           element={
             <ProtectedLayout allowedRoles={['empleado']}>
@@ -91,6 +112,15 @@ function App() {
           element={
             <ProtectedLayout allowedRoles={['admin', 'empleado']}>
               <OrdersHistoryPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/catalogos"
+          element={
+            <ProtectedLayout allowedRoles={['admin', 'empleado']}>
+              <CatalogsPage />
             </ProtectedLayout>
           }
         />

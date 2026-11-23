@@ -147,13 +147,39 @@ function AppLayout({ children }) {
               </Link>
 
               <Link
+                to="/catalogos"
+                className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">▤</span>
+                <span className="sidebar-label">Catálogos</span>
+              </Link>
+
+              <Link
                 to="/productos"
                 className={`sidebar-link ${
                   isActive('/productos') ? 'active' : ''
                 }`}
               >
                 <span className="sidebar-icon">▦</span>
-                <span className="sidebar-label">Productos</span>
+                <span className="sidebar-label">Inventario</span>
+              </Link>
+
+              <div className="sidebar-section-title">Registros</div>
+
+              <Link
+                to="/gastos"
+                className={`sidebar-link ${isActive('/gastos') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">Q</span>
+                <span className="sidebar-label">Gastos</span>
+              </Link>
+
+              <Link
+                to="/graficas"
+                className={`sidebar-link ${isActive('/graficas') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">▥</span>
+                <span className="sidebar-label">Gráficas</span>
               </Link>
             </>
           )}
@@ -190,6 +216,14 @@ function AppLayout({ children }) {
               >
                 <span className="sidebar-icon">▤</span>
                 <span className="sidebar-label">Pedidos</span>
+              </Link>
+
+              <Link
+                to="/catalogos"
+                className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">▤</span>
+                <span className="sidebar-label">Catálogos</span>
               </Link>
             </>
           )}

@@ -573,8 +573,16 @@ ${order.previewImage || 'No disponible'}
           <input
             id="historyDateFilter"
             type="date"
+            aria-label="Fecha del pedido"
             value={dateFilter}
             onChange={(event) => setDateFilter(event.target.value)}
+            onClick={(event) => {
+              try {
+                event.currentTarget.showPicker?.()
+              } catch {
+                // El control nativo sigue disponible en vistas incrustadas.
+              }
+            }}
           />
         </div>
       </div>
@@ -704,7 +712,7 @@ ${order.previewImage || 'No disponible'}
               </div>
 
               <div className="col-md-9">
-                <div className="card-body pe-3">
+                <div className="card-body history-order-body">
                   <div className="history-card-heading">
                     <h5 className="card-title">{getProductName(order)}</h5>
                     {isGarment && <AIValidationPopover order={order} />}

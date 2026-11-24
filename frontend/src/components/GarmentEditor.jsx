@@ -159,11 +159,14 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
           borderStrokeWidth={2}
           borderDash={[6, 3]}
           boundBoxFunc={(oldBox, newBox) => {
-            if (newBox.width < 25 || newBox.height < 25) {
+            const { x, y } = trRef.current.getLayer().getAbsoluteScale()
+            const width = newBox.width / x
+            const height = newBox.height / y
+            if (width < 25 || height < 25) {
               return oldBox
             }
 
-            if (newBox.width > 420 || newBox.height > 420) {
+            if (width > 420 || height > 420) {
               return oldBox
             }
 
@@ -277,8 +280,22 @@ function AreaCanvas({
   register,
 }) {
   const image = useImage(src)
+  const canvasFrame = useRef(null)
+  const [canvasWidth, setCanvasWidth] = useState(450)
+  const scale = canvasWidth / 450
+
+  useEffect(() => {
+    const frame = canvasFrame.current
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.floor(entry.contentRect.width)
+      if (width > 0) setCanvasWidth(Math.min(width, 450))
+    })
+    observer.observe(frame)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <div className="card p-3" style={{ maxWidth: '100%', minWidth: 0 }}>
+    <div className="card garment-canvas-card">
       <h5>{AREA_LABELS[area]}</h5>
       {!src && (
         <p className="text-danger">
@@ -286,16 +303,16 @@ function AreaCanvas({
         </p>
       )}
       {src && !image && <p>Cargando fotografía...</p>}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="garment-canvas-frame" ref={canvasFrame}>
         <Stage
-          width={450}
-          height={540}
+          width={canvasWidth}
+          height={540 * scale}
           ref={(stage) => register(area, image ? stage : null)}
           onMouseDown={(e) => {
             if (e.target === e.target.getStage()) onSelect(null)
           }}
         >
-          <Layer>
+          <Layer scaleX={scale} scaleY={scale}>
             {image && (
               <KonvaImage image={image} x={0} y={0} width={450} height={540} />
             )}
@@ -376,7 +393,7 @@ const GarmentEditor = forwardRef(function GarmentEditor(
       transformers.forEach((t) => t.hide())
       let data
       try {
-        data = stage.toDataURL({ pixelRatio: 1.5 })
+        data = stage.toDataURL({ pixelRatio: 675 / stage.width() })
       } finally {
         transformers.forEach((t) => t.show())
       }
@@ -626,7 +643,7 @@ const GarmentEditor = forwardRef(function GarmentEditor(
               </div>
             )}
           </div>
-          <div className="d-flex flex-wrap gap-3">
+          <div className="garment-canvases d-flex flex-wrap gap-3">
             {sides.map((area) => (
               <AreaCanvas
                 key={area}

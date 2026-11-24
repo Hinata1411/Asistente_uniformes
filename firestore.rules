@@ -12,6 +12,31 @@ service cloud.firestore {
     && ((category=='prenda' && d.get('garmentSource','inventory') in ['inventory','customer']) || (category=='producto' && d.garmentSource=='inventory') || (category=='publicidad' && d.garmentSource=='advertising'));
   }
   function validProduct(d){return d.get('category','prenda') in ['prenda','producto'] && d.name is string && d.name.size()>0 && d.stock is int && d.stock>=0 && d.price is number && d.price>=0;}
+  function inventoryOrder(d) {
+   return d.get('category','prenda') != 'publicidad' && d.get('garmentSource','inventory') == 'inventory';
+  }
+  function matchesInventoryPrice(d) {
+   let price = get(/databases/$(database)/documents/products/$(d.productId)).data.price;
+   // El formulario redondea el precio del inventario a centavos.
+   return d.unitBasePrice >= price - 0.005 && d.unitBasePrice <= price + 0.005;
+  }
+  function validInventoryOrderPrice(d, previous) {
+   return d.unitBasePrice is number && d.unitBasePrice > 0
+    && (admin()
+     || (inventoryOrder(previous) && previous.get('productId','') == d.productId
+      && previous.get('unitBasePrice',0) > 0
+      ? d.unitBasePrice == previous.unitBasePrice
+      : matchesInventoryPrice(d)))
+    && (d.get('category','prenda') != 'producto'
+     || (d.quotedUnitPrice == d.unitBasePrice
+      && d.quoteTotal >= d.unitBasePrice * d.quantity - 0.000001
+      && d.quoteTotal <= d.unitBasePrice * d.quantity + 0.000001));
+  }
+  function inventoryPriceChanged() {
+   return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+    'garmentSource','productId','unitBasePrice','quotedUnitPrice','quoteTotal','quantity'
+   ]);
+  }
   function allowedOrderChanges(){return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
    'orderDate','expectedDeliveryDate','customerName','phone','garmentSource','category','description','referenceImages','areaDetails',
    'productId','productName','productType','productColor','customerGarment','size','quantity','technique','customizationSide','elements','previewImage','previewPath',
@@ -31,8 +56,11 @@ service cloud.firestore {
   match /pricingRules/{id}{allow read: if staff(); allow write: if admin();}
   match /orders/{id}{
    allow read: if staff();
-   allow create: if staff() && validOrder(request.resource.data) && request.resource.data.status=='pendiente_aprobacion';
-   allow update: if staff() && validOrder(request.resource.data) && request.resource.data.get('category','prenda')==resource.data.get('category','prenda') && allowedOrderChanges() && ((resource.data.status!='anulado' && request.resource.data.status!='anulado') || admin());
+   allow create: if staff() && validOrder(request.resource.data) && request.resource.data.status=='pendiente_aprobacion'
+    && (!inventoryOrder(request.resource.data) || validInventoryOrderPrice(request.resource.data, {}));
+   allow update: if staff() && validOrder(request.resource.data) && request.resource.data.get('category','prenda')==resource.data.get('category','prenda') && allowedOrderChanges() && ((resource.data.status!='anulado' && request.resource.data.status!='anulado') || admin())
+    && (!inventoryOrder(request.resource.data) || !inventoryPriceChanged()
+     || validInventoryOrderPrice(request.resource.data, resource.data));
    allow delete: if admin();
   }
   match /inventoryTypes/{category}{

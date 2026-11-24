@@ -111,11 +111,13 @@
    CANVAS
 ========================= */
 
-.garment-editor .d-flex.gap-4 {
+.garment-canvases {
   margin-top: 24px;
 }
 
-.garment-editor .d-flex.gap-4 > div {
+.garment-editor .garment-canvas-card {
+  width: min(100%, 488px);
+  min-width: 0;
   padding: 18px;
 
   border: 1px solid #e5e7eb;
@@ -124,7 +126,11 @@
   background: #ffffff;
 }
 
-.garment-editor .d-flex.gap-4 h5 {
+.garment-canvas-frame {
+  min-width: 0;
+}
+
+.garment-canvas-card h5 {
   margin-bottom: 14px;
 
   color: #111827;
@@ -183,16 +189,9 @@
    RESPONSIVE
 ========================= */
 
-@media (max-width: 1200px) {
-  .garment-editor .konvajs-content {
-    max-width: 100%;
-  }
-}
-
 @media (max-width: 768px) {
-  .garment-editor .d-flex.gap-4 > div {
-    width: 100%;
-    overflow-x: auto;
+  .garment-editor .garment-canvas-card {
+    padding: 10px;
   }
 
   .garment-editor > .card-body > .text-center.mt-4 {

@@ -49,6 +49,7 @@
 ========================= */
 
 .history-order-image {
+  display: block;
   width: 100%;
   height: 210px;
   object-fit: contain;
@@ -70,8 +71,8 @@
 }
 
 .history-card-heading h5 {
-  margin-top: 18px;
-  margin-left: 10px;
+  margin: 0;
+  overflow-wrap: anywhere;
   font-size: 25px;
   font-weight: 700;
   color: #1a1a1a;
@@ -374,36 +375,32 @@
 }
 
 .history-date-filter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
   background: #111;
   border: 2px solid #ffc603;
   border-radius: 999px;
 }
 
-.history-date-filter label {
-  margin: 0;
-  color: #ffc603;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
+.history-date-filter:focus-within {
+  outline: 2px solid #946a00;
+  outline-offset: 2px;
 }
 
 .history-date-filter input[type='date'] {
+  display: block;
+  width: 100%;
+  min-width: 10rem;
+  min-height: 42px;
   border: none;
   background: transparent;
+  color-scheme: dark;
   color: #fff;
   font-size: 14px;
   font-weight: 600;
-  padding: 2px 4px;
+  padding: 8px 16px;
+  cursor: pointer;
 }
 
 .history-date-filter input[type='date']::-webkit-calendar-picker-indicator {
-  filter: invert(1);
   cursor: pointer;
 }
 
@@ -426,15 +423,43 @@
   }
 
   .history-actions-row {
-    justify-content: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .history-actions-row .btn {
-    flex: 1 1 auto;
+    white-space: normal;
   }
 }
 
 @media (max-width: 767px) {
+  .history-order-card > .row > div:first-child {
+    padding: 12px 12px 0 !important;
+  }
+
+  .history-order-card .history-order-body {
+    padding: 12px;
+  }
+
+  .history-actions-row {
+    margin-right: 0;
+    margin-bottom: 0;
+  }
+
+  .history-card-heading {
+    position: relative;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .history-ai {
+    position: static;
+  }
+
+  .history-ai-position {
+    width: 100%;
+  }
+
   .history-order-image {
     height: 160px;
   }

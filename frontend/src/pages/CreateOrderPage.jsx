@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { getIdToken } from 'firebase/auth'
 import { auth } from '../firebase/config'
+import { useAuth } from '../context/AuthContext'
 import useInventoryProducts from '../hooks/orders/useInventoryProducts'
 import GarmentEditor from '../components/GarmentEditor'
 import OrderAIValidationDetails from '../components/OrderAIValidationDetails'
@@ -33,6 +34,7 @@ function getInitial(order) {
     expectedDeliveryDate: localDateValue(order?.expectedDeliveryDate),
     garmentSource: order?.garmentSource || 'inventory',
     productId: order?.productId || '',
+    inventoryPriceOverride: null,
     size: order?.size || '',
     quantity: order?.quantity || 1,
     technique: order?.technique || '',
@@ -54,6 +56,7 @@ export default function CreateOrderPage() {
 }
 function OrderForm({ order }) {
   const navigate = useNavigate()
+  const { role } = useAuth()
   const [form, setForm] = useState(() => getInitial(order))
   const [images, setImages] = useState(() => ({
     ...emptyImages,
@@ -116,8 +119,16 @@ function OrderForm({ order }) {
   const usesSavedPrice = fromInventory && Boolean(product) &&
     order?.productId === product.id && Number(order.unitBasePrice) > 0
   const inventoryPrice = usesSavedPrice ? Number(order.unitBasePrice) : product?.price
+  const canEditInventoryPrice = role === 'admin' && fromInventory && Boolean(product)
+  const formattedInventoryPrice = Number.isFinite(inventoryPrice)
+    ? inventoryPrice.toFixed(2)
+    : ''
+  const inventoryPriceInput =
+    canEditInventoryPrice
+      ? form.inventoryPriceOverride ?? (formattedInventoryPrice && String(Number(formattedInventoryPrice)))
+      : formattedInventoryPrice
   const base = fromInventory
-    ? Number(inventoryPrice ?? 0)
+    ? Number(inventoryPriceInput)
     : advertising ? Number(form.unitBasePrice || 0) : 0
   const surcharge = garment
     ? quoteSides.reduce((sum, s) => sum + Number(areaDetails[s]?.surcharge || 0), 0)
@@ -163,6 +174,7 @@ function OrderForm({ order }) {
     setForm((prev) => ({
       ...prev,
       productId: id,
+      inventoryPriceOverride: null,
       size: p?.size || p?.sizes?.[0] || '',
       technique: '',
       customizationSide: '',
@@ -204,8 +216,12 @@ function OrderForm({ order }) {
       )
     if (exceedsStock)
       throw new Error(`La cantidad supera el stock disponible (${availableQuantity}).`)
-    if (fromInventory && (!Number.isFinite(base) || base <= 0))
-      throw new Error('El producto necesita un precio mayor a cero en el inventario.')
+    if (fromInventory && (!Number.isFinite(base) || base <= 0 || money(base) !== base))
+      throw new Error(
+        canEditInventoryPrice
+          ? 'Ingresa un precio base unitario mayor a cero con hasta dos decimales.'
+          : 'El producto necesita un precio mayor a cero en el inventario.',
+      )
     if ((advertising && !validAmount(form.unitBasePrice)) || !Number.isFinite(total))
       throw new Error('Ingresa un monto válido, igual o mayor a cero.')
     if (advertising && !form.description.trim())
@@ -727,8 +743,15 @@ function OrderForm({ order }) {
                 {fromInventory && (
                   <Field
                     label="Precio base unitario (Q)"
-                    value={Number.isFinite(inventoryPrice) ? inventoryPrice.toFixed(2) : ''}
-                    readOnly
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={inventoryPriceInput}
+                    onChange={canEditInventoryPrice ? (v) => set('inventoryPriceOverride', v) : undefined}
+                    readOnly={!canEditInventoryPrice}
+                    hint={canEditInventoryPrice && (
+                      <span className="form-text">El ajuste se aplica solo a este pedido.</span>
+                    )}
                   />
                 )}
                 {!garment && !advertising && (

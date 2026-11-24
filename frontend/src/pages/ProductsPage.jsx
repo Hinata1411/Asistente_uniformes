@@ -25,12 +25,19 @@ function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [category, setCategory] = useState('')
+  const [search, setSearch] = useState('')
   const [editingTypes, setEditingTypes] = useState(false)
   const { types: garmentTypes } = useInventoryTypes('prenda')
   const { types: productTypes } = useInventoryTypes('producto')
-  const visibleProducts = category
-    ? products.filter((product) => (product.category || 'prenda') === category)
+  const normalizeName = (value) =>
+    value.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').trim()
+  const searchName = normalizeName(search)
+  const matchingProducts = searchName
+    ? products.filter((product) => normalizeName(product.name || '').includes(searchName))
     : products
+  const visibleProducts = category
+    ? matchingProducts.filter((product) => (product.category || 'prenda') === category)
+    : matchingProducts
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -206,9 +213,7 @@ function ProductsPage() {
           </h2>
 
           <p className="page-subtitle">
-            Consulta las prendas disponibles para
-            personalización, sus tallas, técnicas
-            y stock actual.
+            Consulta los artículos disponibles y sus existencias.
           </p>
         </div>
 
@@ -227,6 +232,17 @@ function ProductsPage() {
       </div>
 
       {editingTypes && <InventoryTypeEditor onClose={() => setEditingTypes(false)} />}
+
+      <label className="d-block mb-3">
+        <span className="visually-hidden">Buscar por nombre de artículo</span>
+        <input
+          type="search"
+          className="form-control"
+          placeholder="Buscar por nombre de artículo…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </label>
 
       <div className="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filtrar inventario por categoría">
         {[
@@ -486,7 +502,7 @@ function ProductsPage() {
 
       {!loading && !loadError && visibleProducts.length === 0 && (
         <div className="empty-products">
-          No hay artículos en esta vista.
+          {searchName ? 'No hay artículos que coincidan con la búsqueda y la categoría.' : 'No hay artículos en esta vista.'}
         </div>
       )}
 

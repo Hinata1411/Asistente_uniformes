@@ -158,7 +158,10 @@ try {
       category,
       garmentSource,
       quantity: 1,
-      quoteTotal: 100,
+      ...(garmentSource === 'inventory'
+        ? { productId: 'p', unitBasePrice: 50, quotedUnitPrice: 50 }
+        : {}),
+      quoteTotal: garmentSource === 'inventory' ? 50 : 100,
       status: 'pendiente_aprobacion',
     }
     await check('empleado registra ' + category, () =>
@@ -168,6 +171,32 @@ try {
       assertFails(deleteDoc(doc(employee, 'orders', category))),
     )
   }
+  const adjustedPrice = { unitBasePrice: 40, quotedUnitPrice: 40, quoteTotal: 40 }
+  const newAdjustedOrder = {
+    category: 'prenda',
+    garmentSource: 'inventory',
+    productId: 'p',
+    quantity: 1,
+    status: 'pendiente_aprobacion',
+    ...adjustedPrice,
+  }
+  await check('solo el administrador crea pedidos con un precio ajustado', async () => {
+    await assertFails(setDoc(doc(employee, 'orders', 'precio-ajustado'), newAdjustedOrder))
+    await assertSucceeds(setDoc(doc(admin, 'orders', 'precio-ajustado'), newAdjustedOrder))
+  })
+  await check('empleado no puede sobrescribir el precio del inventario', () =>
+    assertFails(updateDoc(doc(employee, 'orders', 'producto'), adjustedPrice)),
+  )
+  await check('empleado no puede alterar el total del producto por separado', () =>
+    assertFails(updateDoc(doc(employee, 'orders', 'producto'), { quoteTotal: 40 })),
+  )
+  await check('administrador ajusta el precio y empleado conserva el ajuste', async () => {
+    await assertSucceeds(updateDoc(doc(admin, 'orders', 'producto'), adjustedPrice))
+    await assertSucceeds(updateDoc(doc(employee, 'orders', 'producto'), {
+      quantity: 2,
+      quoteTotal: 80,
+    }))
+  })
   await check('producto no admite origen de cliente', () =>
     assertFails(
       setDoc(doc(employee, 'orders', 'mala-categoria'), {
@@ -187,7 +216,7 @@ try {
       setDoc(doc(ctx.firestore(), 'products', 'ultimo'), {
         category: 'producto',
         name: 'Último',
-        price: 0,
+        price: 25,
         stock: 1,
         active: true,
       }),
@@ -198,6 +227,8 @@ try {
       productId: 'ultimo',
       quantity: 1,
       size: '',
+      unitBasePrice: 25,
+      quotedUnitPrice: 25,
       quoteTotal: 25,
       paymentPlan: 'anticipo_50',
     }
@@ -230,6 +261,8 @@ try {
         productId: 'p',
         size: 'Manual 42',
         quantity: 1,
+        unitBasePrice: 50,
+        quotedUnitPrice: 80,
         quoteTotal: 80,
         paymentPlan: 'anticipo_50',
       }
@@ -246,7 +279,7 @@ try {
         totalPaid: 40,
       })
       await runTransaction(employee, (tx) =>
-        applyOrderTransaction(tx, { ...payload, quoteTotal: 90 }, 'edicion', {
+        applyOrderTransaction(tx, { ...payload, quotedUnitPrice: 90, quoteTotal: 90 }, 'edicion', {
           db: employee,
           doc,
           orderRef: target,
@@ -261,7 +294,7 @@ try {
       )
     },
   )
-  assert.equal(count, 29)
+  assert.equal(count, 33)
   console.log(`${count} comprobaciones de permisos satisfactorias`)
 } finally {
   await env.cleanup()

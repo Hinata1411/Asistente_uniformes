@@ -260,25 +260,35 @@ export async function generateOrderPdf(order, { download = true } = {}) {
   docPDF.text('Avenida Chipilapa 3-69, zona 2, Barrio La Esperanza,', headerX, 31)
   docPDF.text('Jalapa, Jalapa, Guatemala', headerX, 35.5)
 
-  const socialY = 42
+  const contactY = 42
+  const contactBaseline = contactY + 3.6
+  const instagram = '@artegrafiauniformes'
+  const facebook = 'Arte Grafía'
+  const iconToText = 7.5
+  const contactGap = 10
   docPDF.setDrawColor(...BRAND_GOLD)
   docPDF.setFillColor(...BRAND_GOLD)
   docPDF.setLineWidth(0.45)
-  docPDF.roundedRect(headerX, socialY, 5, 5, 1.1, 1.1, 'S')
-  docPDF.circle(headerX + 2.5, socialY + 2.5, 1.15, 'S')
-  docPDF.circle(headerX + 3.8, socialY + 1.2, 0.32, 'F')
-  docPDF.text('@artegrafiauniformes', headerX + 7.5, socialY + 3.6)
-  const facebookX = headerX + 49
-  docPDF.roundedRect(facebookX, socialY, 5, 5, 0.8, 0.8, 'F')
+  docPDF.roundedRect(headerX, contactY, 5, 5, 1.1, 1.1, 'S')
+  docPDF.circle(headerX + 2.5, contactY + 2.5, 1.15, 'S')
+  docPDF.circle(headerX + 3.8, contactY + 1.2, 0.32, 'F')
+  docPDF.text(instagram, headerX + iconToText, contactBaseline)
+
+  const facebookX = headerX + iconToText + docPDF.getTextWidth(instagram) + contactGap
+  docPDF.roundedRect(facebookX, contactY, 5, 5, 0.8, 0.8, 'F')
   docPDF.setTextColor(...BRAND_BLACK)
   docPDF.setFont('helvetica', 'bold')
   docPDF.setFontSize(13)
-  docPDF.text('f', facebookX + 1.7, socialY + 4.5)
+  docPDF.text('f', facebookX + 1.7, contactY + 4.5)
   docPDF.setTextColor(255, 255, 255)
   docPDF.setFont('helvetica', 'normal')
   docPDF.setFontSize(9)
-  docPDF.text('Arte Grafía', facebookX + 7.5, socialY + 3.6)
-  docPDF.text('Tel. 5425-3023', headerX, 52)
+  docPDF.text(facebook, facebookX + iconToText, contactBaseline)
+
+  const phoneX = facebookX + iconToText + docPDF.getTextWidth(facebook) + contactGap
+  docPDF.roundedRect(phoneX + 0.9, contactY, 3.2, 5, 0.55, 0.55, 'S')
+  docPDF.line(phoneX + 2, contactY + 3.9, phoneX + 3, contactY + 3.9)
+  docPDF.text('5425-3023', phoneX + iconToText, contactBaseline)
   y = 70
 
   // =========================

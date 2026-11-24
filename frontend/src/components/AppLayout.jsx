@@ -9,6 +9,16 @@ import '../styles/AppLayout.css'
 
 const DESKTOP_QUERY = '(min-width: 992px)'
 
+function CatalogIcon() {
+  return (
+    <span className="sidebar-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v14" />
+      </svg>
+    </span>
+  )
+}
+
 function AppLayout({ children }) {
   const { user, role } = useAuth()
   const location = useLocation()
@@ -150,7 +160,7 @@ function AppLayout({ children }) {
                 to="/catalogos"
                 className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
               >
-                <span className="sidebar-icon" aria-hidden="true">▤</span>
+                <CatalogIcon />
                 <span className="sidebar-label">Catálogos</span>
               </Link>
 
@@ -178,7 +188,11 @@ function AppLayout({ children }) {
                 to="/graficas"
                 className={`sidebar-link ${isActive('/graficas') ? 'active' : ''}`}
               >
-                <span className="sidebar-icon" aria-hidden="true">▥</span>
+                <span className="sidebar-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4v16h16M8 16v-4m5 4V8m5 8V5" />
+                  </svg>
+                </span>
                 <span className="sidebar-label">Gráficas</span>
               </Link>
             </>
@@ -222,7 +236,7 @@ function AppLayout({ children }) {
                 to="/catalogos"
                 className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
               >
-                <span className="sidebar-icon" aria-hidden="true">▤</span>
+                <CatalogIcon />
                 <span className="sidebar-label">Catálogos</span>
               </Link>
             </>

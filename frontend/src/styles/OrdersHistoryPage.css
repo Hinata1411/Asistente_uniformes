@@ -295,17 +295,6 @@
    ESTADO DEL PEDIDO
 ========================= */
 
-.history-status-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 14px;
-  padding: 10px 2px 0;
-  margin-bottom: 4px;
-  border-top: 1px solid #f1f1f1;
-}
-
 .history-status-current,
 .history-status-change {
   display: flex;
@@ -417,11 +406,6 @@
     width: 100%;
   }
 
-  .history-status-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .history-status-change {
     min-width: 0;
   }
@@ -438,7 +422,7 @@
 
 @media (max-width: 767px) {
   .history-order-card > .row > div:first-child {
-    padding: 12px 12px 0 !important;
+    padding-bottom: 0 !important;
   }
 
   .history-order-card .history-order-body {

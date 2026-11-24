@@ -27,6 +27,47 @@ import { askConfirm, askPrompt } from '../services/dialogStore'
 import '../styles/statusBadges.css'
 import '../styles/OrdersHistoryPage.css'
 
+function deliveryEvents(order) {
+  return Array.isArray(order.deliveryHistory) ? order.deliveryHistory : []
+}
+
+function isRepairEntry(entry) {
+  return entry.action === 'estado_reabierto' && entry.status === 'en_arreglo'
+}
+
+function isDeliveryEntry(entry) {
+  return entry.action === 'entrega_confirmada' || entry.action === 'entrega_arreglo'
+}
+
+function describeDeliveries(order) {
+  const events = deliveryEvents(order)
+  const entries = []
+  if (order.deliveredAt && (
+    !events.some(isDeliveryEntry) ||
+    new Date(order.deliveredAt.toDate?.() ?? order.deliveredAt) < new Date(events[0].recordedAt)
+  )) {
+    entries.push({ date: order.deliveredAt, label: 'Entrega confirmada' })
+  }
+
+  let repairPending = false
+  for (const event of events) {
+    let label
+    if (isRepairEntry(event)) {
+      label = 'Ingreso a arreglo o devolución'
+      repairPending = true
+    } else if (isDeliveryEntry(event)) {
+      label = repairPending || event.action === 'entrega_arreglo'
+        ? 'Entrega después del arreglo'
+        : 'Entrega confirmada'
+      repairPending = false
+    } else if (event.action === 'estado_reabierto') {
+      label = 'Pedido reabierto'
+    }
+    if (label) entries.push({ date: event.recordedAt, label })
+  }
+  return entries
+}
+
 // Ventana de consulta: no vuelve a llamar a la IA ni modifica el pedido.
 function AIValidationPopover({ order }) {
   const [open, setOpen] = useState(false)
@@ -301,12 +342,20 @@ function OrdersHistoryPage() {
   if (newStatus === 'entregado') {
     // Conservar la primera entrega y cada confirmación posterior.
     if (!order.deliveredAt) changes.deliveredAt = serverTimestamp()
+    const lastDeliveryEvent = deliveryEvents(order).findLast(
+      (entry) => isRepairEntry(entry) || isDeliveryEntry(entry),
+    )
+    const isRepairDelivery = (!order.category || order.category === 'prenda') &&
+      (previousStatus === 'en_arreglo' ||
+        (lastDeliveryEvent && isRepairEntry(lastDeliveryEvent)))
     changes.deliveryHistory = arrayUnion({
-      action: 'entrega_confirmada',
+      action: isRepairDelivery ? 'entrega_arreglo' : 'entrega_confirmada',
       recordedAt: new Date().toISOString()
     })
-  } else if (previousStatus === 'entregado') {
-    // Regresar de estado NO borra la fecha real de entrega.
+  } else if (
+    previousStatus === 'entregado' ||
+    (newStatus === 'en_arreglo' && (!order.category || order.category === 'prenda'))
+  ) {
     changes.deliveryHistory = arrayUnion({
       action: 'estado_reabierto',
       status: newStatus,
@@ -636,6 +685,7 @@ ${order.previewImage || 'No disponible'}
 
       {filteredOrders.map((order) => {
         const isGarment = !order.category || order.category === 'prenda'
+        const deliveries = isGarment ? describeDeliveries(order) : []
         const usesProductLayout = order.category === 'producto' || order.category === 'publicidad'
         const description = order.description?.trim()
         const specifications = order.personalizationSize?.trim()
@@ -703,7 +753,7 @@ ${order.previewImage || 'No disponible'}
             }`}
           >
             <div className="row g-0">
-              <div className="col-md-3 p-2">
+              <div className="col-md-3 p-3 pe-md-2">
                 <img
                   src={order.previewImage}
                   className="img-fluid rounded history-order-image"
@@ -712,7 +762,7 @@ ${order.previewImage || 'No disponible'}
               </div>
 
               <div className="col-md-9">
-                <div className="card-body history-order-body">
+                <div className="card-body p-3 ps-md-2">
                   <div className="history-card-heading">
                     <h5 className="card-title">{getProductName(order)}</h5>
                     {isGarment && <AIValidationPopover order={order} />}
@@ -752,19 +802,14 @@ ${order.previewImage || 'No disponible'}
                   <div className="history-dates-row">
                     <span><strong>Fecha del pedido:</strong> {displayOrderDate(order.orderDate || order.createdAt)}</span>
                     <span><strong>Entrega prevista:</strong> {displayOrderDate(order.expectedDeliveryDate)}</span>
-                    {!usesProductLayout && (
-                      <span><strong>Primera entrega real:</strong> {displayOrderDate(order.deliveredAt)}</span>
-                    )}
                   </div>
-                  {!usesProductLayout && Array.isArray(order.deliveryHistory) && order.deliveryHistory.length > 0 && (
+                  {deliveries.length > 0 && (
                     <details className="small mb-2">
-                      <summary>Historial de entregas ({order.deliveryHistory.length})</summary>
+                      <summary>Historial de entregas (incluye arreglos y devoluciones)</summary>
                       <ul className="mt-2">
-                        {order.deliveryHistory.map((entry, index) => (
+                        {deliveries.map((entry, index) => (
                           <li key={index}>
-                            {displayOrderDate(entry.recordedAt)} — {entry.action === 'entrega_confirmada'
-                              ? 'Entrega confirmada'
-                              : `Pedido reabierto: ${entry.status || 'sin estado'}`}
+                            {displayOrderDate(entry.date)} — {entry.label}
                           </li>
                         ))}
                       </ul>
@@ -789,32 +834,26 @@ ${order.previewImage || 'No disponible'}
                       </span>
                     </div>
 
-                    {(usesProductLayout || (!isCancelled && !isDelivered)) && (
-                      <div className="history-payment-plan-row column-gap-4">
-                        {!isCancelled && !isDelivered && (
-                          <div className="d-flex align-items-center gap-2">
-                            <label className="small mb-0 text-nowrap" htmlFor={`history-payment-plan-${order.id}`}>
-                              <strong>Forma de pago:</strong>
-                            </label>
-                            <select
-                              id={`history-payment-plan-${order.id}`}
-                              className="form-select form-select-sm history-payment-plan-select w-auto"
-                              value={order.paymentPlan || 'anticipo_50'}
-                              onChange={(event) => handleChangePaymentPlan(order, event.target.value)}
-                            >
-                              <option value="anticipo_50">Anticipo 50%</option>
-                              <option value="completo">Pago completo</option>
-                            </select>
-                          </div>
-                        )}
-                        {usesProductLayout && statusControl}
-                      </div>
-                    )}
+                    <div className="history-payment-plan-row column-gap-4">
+                      {!isCancelled && !isDelivered && (
+                        <div className="d-flex align-items-center gap-2">
+                          <label className="small mb-0 text-nowrap" htmlFor={`history-payment-plan-${order.id}`}>
+                            <strong>Forma de pago:</strong>
+                          </label>
+                          <select
+                            id={`history-payment-plan-${order.id}`}
+                            className="form-select form-select-sm history-payment-plan-select w-auto"
+                            value={order.paymentPlan || 'anticipo_50'}
+                            onChange={(event) => handleChangePaymentPlan(order, event.target.value)}
+                          >
+                            <option value="anticipo_50">Anticipo 50%</option>
+                            <option value="completo">Pago completo</option>
+                          </select>
+                        </div>
+                      )}
+                      {statusControl}
+                    </div>
                   </div>
-
-                  {!usesProductLayout && (
-                    <div className="history-status-row">{statusControl}</div>
-                  )}
 
                   {usesProductLayout && (description || specifications) && (
                     <dl className="row g-2 mb-0 mt-1 px-2 py-1 small">

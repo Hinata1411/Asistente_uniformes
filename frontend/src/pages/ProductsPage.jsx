@@ -422,58 +422,9 @@ function ProductsPage() {
 
               </div>
 
-              <div className="product-techniques">
-                {product.category !== 'producto' && (
+              {product.category !== 'producto' && (
+                <div className="product-techniques">
                   <span className="product-info-label">Técnicas permitidas</span>
-                )}
-
-                <div className="d-flex justify-content-end gap-2 mt-3">
-                  <button
-                    type="button"
-                    className="btn btn-outline-primary btn-sm"
-                    onClick={() =>
-                      navigate(
-                        `/productos/editar/${product.id}`,
-                        {
-                          state: {
-                            productToEdit: product
-                          }
-                        }
-                      )
-                    }
-                  >
-                    Editar
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${
-                      product.active === false
-                        ? 'btn-outline-success'
-                        : 'btn-outline-danger'
-                    }`}
-                    onClick={() =>
-                      handleToggleActive(product)
-                    }
-                  >
-                    {product.active === false
-                      ? 'Activar'
-                      : 'Desactivar'}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-outline-danger btn-sm"
-                    onClick={() =>
-                      handleDeleteProduct(product)
-                    }
-                  >
-                    Eliminar
-                  </button>
-
-                </div>
-                
-                {product.category !== 'producto' && (
                   <div className="technique-list">
                     {product.allowedTechniques?.length > 0 ? (
                       product.allowedTechniques.map(
@@ -492,7 +443,53 @@ function ProductsPage() {
                       </span>
                     )}
                   </div>
-                )}
+                </div>
+              )}
+
+              <div className="d-flex justify-content-end gap-2 mt-3">
+                <button
+                  type="button"
+                  className="btn btn-outline-primary btn-sm"
+                  onClick={() =>
+                    navigate(
+                      `/productos/editar/${product.id}`,
+                      {
+                        state: {
+                          productToEdit: product
+                        }
+                      }
+                    )
+                  }
+                >
+                  Editar
+                </button>
+
+                <button
+                  type="button"
+                  className={`btn btn-sm ${
+                    product.active === false
+                      ? 'btn-outline-success'
+                      : 'btn-outline-danger'
+                  }`}
+                  onClick={() =>
+                    handleToggleActive(product)
+                  }
+                >
+                  {product.active === false
+                    ? 'Activar'
+                    : 'Desactivar'}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-danger btn-sm"
+                  onClick={() =>
+                    handleDeleteProduct(product)
+                  }
+                >
+                  Eliminar
+                </button>
+
               </div>
 
             </div>

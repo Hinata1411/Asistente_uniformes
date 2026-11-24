@@ -27,7 +27,7 @@ export const displayOrderDate = (value) => {
   return date ? date.split('-').reverse().join('/') : 'No registrada'
 }
 
-export const getProductName = (order) => {
+export const getProductName = (order, category = 'Prenda') => {
   const candidates = [
     order.productName,
     typeof order.product === 'string'
@@ -42,7 +42,7 @@ export const getProductName = (order) => {
       value.trim().length > 0
   )
 
-  return name?.trim() || 'Prenda sin nombre registrado'
+  return name?.trim() || category + ' sin nombre registrado'
 }
 
 export const getPaymentSummary = (order) => {

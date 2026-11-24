@@ -583,7 +583,7 @@ function OrderForm({ order }) {
                             value={p.id}
                             disabled={p.legacyMultiSize}
                           >
-                            {p.name} / {p.size || p.color || ''} / Stock {p.stock}
+                            {[p.name, p.size, p.color, `Stock ${p.stock}`].filter(Boolean).join(' / ')}
                             {p.legacyMultiSize ? ' — separar tallas' : ''}
                           </option>
                         ))}

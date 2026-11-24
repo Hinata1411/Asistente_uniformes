@@ -1,15 +1,17 @@
-import { CATEGORIES, AREA_LABELS } from '../services/businessModel'
+import InventoryTypeEditor, { useInventoryTypes } from '../components/InventoryTypes'
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import {
+  Link,
+  useNavigate
+} from 'react-router-dom'
 import {
   collection,
   getDocs,
   doc,
   updateDoc,
-  runTransaction,
   deleteDoc,
   query,
-  where,
+  where
 } from 'firebase/firestore'
 
 import { db } from '../firebase/config'
@@ -21,20 +23,36 @@ function ProductsPage() {
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [category, setCategory] = useState('')
+  const [editingTypes, setEditingTypes] = useState(false)
+  const { types: garmentTypes } = useInventoryTypes('prenda')
+  const { types: productTypes } = useInventoryTypes('producto')
+  const visibleProducts = category
+    ? products.filter((product) => (product.category || 'prenda') === category)
+    : products
 
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const snapshot = await getDocs(collection(db, 'products'))
+        const snapshot = await getDocs(
+          collection(db, 'products')
+        )
 
-        const productsData = snapshot.docs.map((document) => ({
-          id: document.id,
-          ...document.data(),
-        }))
+        const productsData = snapshot.docs.map(
+          (document) => ({
+            id: document.id,
+            ...document.data()
+          })
+        )
 
         setProducts(productsData)
       } catch (error) {
-        console.error('Error cargando productos:', error)
+        console.error(
+          'Error cargando inventario:',
+          error
+        )
+        setLoadError(true)
       } finally {
         setLoading(false)
       }
@@ -43,8 +61,13 @@ function ProductsPage() {
     loadProducts()
   }, [])
 
-  const handleStockChange = async (productId, currentStock, change) => {
-    const newStock = Number(currentStock || 0) + change
+  const handleStockChange = async (
+    productId,
+    currentStock,
+    change
+  ) => {
+    const newStock =
+      Number(currentStock || 0) + change
 
     if (newStock < 0) {
       notify('El stock no puede ser negativo', 'warning')
@@ -52,30 +75,33 @@ function ProductsPage() {
     }
 
     try {
-      let savedStock
-      await runTransaction(db, async (transaction) => {
-        const target = doc(db, 'products', productId)
-        const snap = await transaction.get(target)
-        if (!snap.exists()) throw new Error('El producto ya no existe.')
-        savedStock = Number(snap.data().stock || 0) + change
-        if (savedStock < 0) throw new Error('El stock no puede ser negativo.')
-        transaction.update(target, { stock: savedStock })
-      })
+      await updateDoc(
+        doc(db, 'products', productId),
+        {
+          stock: newStock
+        }
+      )
 
       setProducts((prev) =>
         prev.map((product) =>
           product.id === productId
             ? {
                 ...product,
-                stock: savedStock,
+                stock: newStock
               }
-            : product,
-        ),
+            : product
+        )
       )
     } catch (error) {
-      console.error('Error actualizando stock:', error)
+      console.error(
+        'Error actualizando stock:',
+        error
+      )
 
-      notify('No se pudo actualizar el stock', 'error')
+      notify(
+        'No se pudo actualizar el stock',
+        'error'
+      )
     }
   }
 
@@ -83,31 +109,40 @@ function ProductsPage() {
     const newActiveStatus = product.active === false
 
     try {
-      await updateDoc(doc(db, 'products', product.id), {
-        active: newActiveStatus,
-      })
+      await updateDoc(
+        doc(db, 'products', product.id),
+        {
+          active: newActiveStatus
+        }
+      )
 
       setProducts((prev) =>
         prev.map((item) =>
           item.id === product.id
             ? {
                 ...item,
-                active: newActiveStatus,
+                active: newActiveStatus
               }
-            : item,
-        ),
+            : item
+        )
       )
     } catch (error) {
-      console.error('Error actualizando estado del producto:', error)
+      console.error(
+        'Error actualizando estado del producto:',
+        error
+      )
 
-      notify('No se pudo actualizar el estado del producto', 'error')
+      notify(
+        'No se pudo actualizar el estado del producto',
+        'error'
+      )
     }
   }
 
   const handleDeleteProduct = async (product) => {
     const confirmed = await askConfirm(
       `¿Deseas eliminar definitivamente "${product.name}"?`,
-      { confirmLabel: 'Eliminar definitivamente', danger: true },
+      { confirmLabel: 'Eliminar definitivamente', danger: true }
     )
 
     if (!confirmed) {
@@ -117,91 +152,151 @@ function ProductsPage() {
     try {
       const ordersQuery = query(
         collection(db, 'orders'),
-        where('productId', '==', product.id),
+        where('productId', '==', product.id)
       )
 
-      const ordersSnapshot = await getDocs(ordersQuery)
+      const ordersSnapshot = await getDocs(
+        ordersQuery
+      )
 
       if (!ordersSnapshot.empty) {
         notify(
           'Este producto ya está asociado a uno o más pedidos. No puede eliminarse definitivamente; puedes desactivarlo.',
-          'warning',
+          'warning'
         )
 
         return
       }
 
-      await deleteDoc(doc(db, 'products', product.id))
+      await deleteDoc(
+        doc(db, 'products', product.id)
+      )
 
-      setProducts((prev) => prev.filter((item) => item.id !== product.id))
+      setProducts((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== product.id
+        )
+      )
 
-      notify('Producto eliminado definitivamente', 'success')
+      notify(
+        'Producto eliminado definitivamente',
+        'success'
+      )
     } catch (error) {
-      console.error('Error eliminando producto:', error)
+      console.error(
+        'Error eliminando producto:',
+        error
+      )
 
-      notify('No se pudo eliminar el producto', 'error')
+      notify(
+        'No se pudo eliminar el producto',
+        'error'
+      )
     }
   }
 
   return (
     <div className="products-page">
+
       <div className="products-header">
         <div>
-          <h2 className="page-title">Productos e inventario</h2>
+          <h2 className="page-title">
+            Inventario
+          </h2>
 
           <p className="page-subtitle">
-            Consulta prendas y productos, sus características y stock actual.
+            Consulta las prendas disponibles para
+            personalización, sus tallas, técnicas
+            y stock actual.
           </p>
         </div>
 
-        <Link to="/productos/nuevo" className="btn btn-primary">
-          + Nuevo producto
-        </Link>
+        <div className="d-flex flex-wrap gap-2">
+          <button type="button" className="btn btn-outline-secondary" aria-expanded={editingTypes}
+            onClick={() => setEditingTypes(value => !value)}>
+            Editar tipos
+          </button>
+          <Link
+            to="/productos/nuevo"
+            className="btn btn-primary"
+          >
+            + Nuevo artículo
+          </Link>
+        </div>
       </div>
 
-      {loading && <div className="text-muted mb-3">Cargando productos...</div>}
+      {editingTypes && <InventoryTypeEditor onClose={() => setEditingTypes(false)} />}
 
-      {products.some(
-        (product) =>
-          !product.size &&
-          Array.isArray(product.sizes) &&
-          product.sizes.length > 1,
-      ) && (
-        <div className="alert alert-warning" role="alert">
-          Hay productos antiguos con varias tallas y un solo stock compartido.
-          Para continuar, crea un producto por talla y asigna el stock real de
-          cada una; no se puede repartir automáticamente sin esos datos.
+      <div className="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filtrar inventario por categoría">
+        {[
+          ['', 'Todos'],
+          ['prenda', 'Prendas'],
+          ['producto', 'Productos']
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`btn ${category === value ? 'btn-primary' : 'btn-outline-secondary'}`}
+            aria-pressed={category === value}
+            onClick={() => setCategory(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loadError && (
+        <p role="alert" className="alert alert-danger">No se pudo cargar el inventario.</p>
+      )}
+
+      {loading && (
+        <div className="text-muted mb-3">
+          Cargando inventario...
         </div>
       )}
 
       <div className="products-grid">
-        {products.map((product) => (
-          <article key={product.id} className="product-card">
+        {visibleProducts.map((product) => (
+          <article
+            key={product.id}
+            className="product-card"
+          >
             <div className="product-image-wrapper">
               <img
-                src={product.images?.frente}
+                src={product.images?.frente || product.images?.espalda ||
+                  product.images?.manga_izquierda || product.images?.manga_derecha ||
+                  product.frontImage || product.backImage || undefined}
                 alt={product.name}
                 className="product-image"
               />
             </div>
 
             <div className="product-content">
+
               <div className="product-title-row">
                 <div>
                   <span className="product-type">
-                    {CATEGORIES[product.category || 'prenda']} · {product.type}
+                    {product.category === 'producto' ? 'Producto' : 'Prenda'}
+                    {product.type && ` · ${(product.category === 'producto' ? productTypes : garmentTypes).find(type => type.id === product.type)?.label || product.type}`}
                   </span>
 
-                  <h3>{product.name}</h3>
+                  <h3>
+                    {product.name}
+                  </h3>
                   <div className="product-price">
-                    Q{Number(product.price || 0).toFixed(2)}
+                    Q{Number(product.price ?? product.basePrice ?? 0).toFixed(2)}
                   </div>
                   <span
                     className={`badge ${
-                      product.active === false ? 'bg-secondary' : 'bg-success'
+                      product.active === false
+                        ? 'bg-secondary'
+                        : 'bg-success'
                     }`}
                   >
-                    {product.active === false ? 'Inactivo' : 'Activo'}
+                    {product.active === false
+                      ? 'Inactivo'
+                      : 'Activo'}
                   </span>
                 </div>
 
@@ -219,27 +314,39 @@ function ProductsPage() {
               </div>
 
               <div className="mt-3">
-                <span className="product-info-label">Ajustar stock</span>
+                <span className="product-info-label">
+                  Ajustar stock
+                </span>
 
                 <div className="d-flex align-items-center gap-2 mt-2">
                   <button
                     type="button"
                     className="btn btn-outline-danger btn-sm"
                     onClick={() =>
-                      handleStockChange(product.id, product.stock, -1)
+                      handleStockChange(
+                        product.id,
+                        product.stock,
+                        -1
+                      )
                     }
                     disabled={product.stock <= 0}
                   >
                     −
                   </button>
 
-                  <strong>{product.stock}</strong>
+                  <strong>
+                    {product.stock}
+                  </strong>
 
                   <button
                     type="button"
                     className="btn btn-outline-success btn-sm"
                     onClick={() =>
-                      handleStockChange(product.id, product.stock, 1)
+                      handleStockChange(
+                        product.id,
+                        product.stock,
+                        1
+                      )
                     }
                   >
                     +
@@ -248,60 +355,75 @@ function ProductsPage() {
               </div>
 
               <div className="product-info-grid">
-                <div>
-                  <span className="product-info-label">Color</span>
-
-                  <strong>{product.color}</strong>
-                </div>
 
                 <div>
-                  <span className="product-info-label">Talla</span>
+                  <span className="product-info-label">
+                    Color
+                  </span>
 
                   <strong>
-                    {product.size || product.sizes?.[0]
-                      ? product.size || product.sizes[0]
-                      : 'No definidas'}
+                    {product.color}
                   </strong>
-                  {!product.size &&
-                    Array.isArray(product.sizes) &&
-                    product.sizes.length > 1 && (
-                      <span className="d-block text-warning small">
-                        Separar tallas y stock
+                </div>
+
+                {product.category !== 'producto' && (
+                  <>
+                    <div>
+                      <span className="product-info-label">
+                        Tallas
                       </span>
-                    )}
-                </div>
 
-                <div>
-                  <span className="product-info-label">Personalización</span>
+                      <strong>
+                        {product.size || (product.sizes?.length > 0
+                          ? product.sizes.join(', ')
+                          : 'No definidas')}
+                      </strong>
+                    </div>
 
-                  <strong>
-                    {product.availableSides?.length > 0
-                      ? product.availableSides
-                          .map((side) => AREA_LABELS[side] || side)
-                          .join(', ')
-                      : 'No definida'}
-                  </strong>
-                </div>
+                    <div>
+                      <span className="product-info-label">
+                        Personalización
+                      </span>
+
+                      <strong>
+                        {product.availableSides?.length > 0
+                          ? product.availableSides
+                              .map(side => ({
+                                frente: 'Frente',
+                                espalda: 'Espalda',
+                                ambos: 'Frente y espalda',
+                                manga_izquierda: 'Manga izquierda',
+                                manga_derecha: 'Manga derecha',
+                                mangas: 'Ambas mangas'
+                              })[side] || side)
+                              .join(', ')
+                          : 'No definida'}
+                      </strong>
+                    </div>
+
+                  </>
+                )}
+
               </div>
 
               <div className="product-techniques">
-                <span className="product-info-label">Técnicas permitidas</span>
+                {product.category !== 'producto' && (
+                  <span className="product-info-label">Técnicas permitidas</span>
+                )}
 
                 <div className="d-flex justify-content-end gap-2 mt-3">
                   <button
                     type="button"
                     className="btn btn-outline-primary btn-sm"
-                    disabled={
-                      !product.size &&
-                      Array.isArray(product.sizes) &&
-                      product.sizes.length > 1
-                    }
                     onClick={() =>
-                      navigate(`/productos/editar/${product.id}`, {
-                        state: {
-                          productToEdit: product,
-                        },
-                      })
+                      navigate(
+                        `/productos/editar/${product.id}`,
+                        {
+                          state: {
+                            productToEdit: product
+                          }
+                        }
+                      )
                     }
                   >
                     Editar
@@ -314,42 +436,60 @@ function ProductsPage() {
                         ? 'btn-outline-success'
                         : 'btn-outline-danger'
                     }`}
-                    onClick={() => handleToggleActive(product)}
+                    onClick={() =>
+                      handleToggleActive(product)
+                    }
                   >
-                    {product.active === false ? 'Activar' : 'Desactivar'}
+                    {product.active === false
+                      ? 'Activar'
+                      : 'Desactivar'}
                   </button>
 
                   <button
                     type="button"
                     className="btn btn-outline-danger btn-sm"
-                    onClick={() => handleDeleteProduct(product)}
+                    onClick={() =>
+                      handleDeleteProduct(product)
+                    }
                   >
                     Eliminar
                   </button>
-                </div>
 
-                <div className="technique-list">
-                  {product.allowedTechniques?.length > 0 ? (
-                    product.allowedTechniques.map((technique) => (
-                      <span key={technique} className="technique-tag">
-                        {technique}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-muted small">
-                      No hay técnicas configuradas.
-                    </span>
-                  )}
                 </div>
+                
+                {product.category !== 'producto' && (
+                  <div className="technique-list">
+                    {product.allowedTechniques?.length > 0 ? (
+                      product.allowedTechniques.map(
+                        (technique) => (
+                          <span
+                            key={technique}
+                            className="technique-tag"
+                          >
+                            {technique}
+                          </span>
+                        )
+                      )
+                    ) : (
+                      <span className="text-muted small">
+                        No hay técnicas configuradas.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
+
             </div>
           </article>
         ))}
       </div>
 
-      {!loading && products.length === 0 && (
-        <div className="empty-products">No hay productos registrados.</div>
+      {!loading && !loadError && visibleProducts.length === 0 && (
+        <div className="empty-products">
+          No hay artículos en esta vista.
+        </div>
       )}
+
     </div>
   )
 }

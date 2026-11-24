@@ -486,7 +486,7 @@ app.use((error, req, res, next) => {
     return res.status(413).json({
       error: 'Solicitud demasiado grande',
       message:
-        'Los datos enviados superan el límite de 20 MB. Reduce el tamaño de la imagen.'
+        'Los datos enviados superan el límite de 8 MB. Reduce el tamaño de la imagen.'
     })
   }
 

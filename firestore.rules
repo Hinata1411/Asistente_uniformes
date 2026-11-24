@@ -32,8 +32,14 @@ service cloud.firestore {
   match /orders/{id}{
    allow read: if staff();
    allow create: if staff() && validOrder(request.resource.data) && request.resource.data.status=='pendiente_aprobacion';
-   allow update: if staff() && validOrder(request.resource.data) && request.resource.data.get('category','prenda')==resource.data.get('category','prenda') && allowedOrderChanges() && (request.resource.data.status!='anulado' || admin());
+   allow update: if staff() && validOrder(request.resource.data) && request.resource.data.get('category','prenda')==resource.data.get('category','prenda') && allowedOrderChanges() && ((resource.data.status!='anulado' && request.resource.data.status!='anulado') || admin());
    allow delete: if admin();
+  }
+  match /inventoryTypes/{category}{
+   allow get: if staff() && category in ['prenda', 'producto'];
+   allow create, update: if admin() && category in ['prenda', 'producto']
+    && request.resource.data.keys().hasOnly(['types'])
+    && request.resource.data.types is list;
   }
   match /expenses/{id}{
    allow read,delete: if admin();

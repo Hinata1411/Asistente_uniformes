@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react'
 import {
   collection,
-  onSnapshot,
+  getDocs,
+  getFirestore,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
-} from 'firebase/firestore'
+} from 'firebase/firestore/lite'
 import { db } from '../firebase/config'
-import { useAuth } from '../context/authState'
+import { useAuth } from '../context/AuthContext'
 import { safeCatalogUrl } from '../services/businessModel'
 import { notify } from '../services/toastStore'
 import { askConfirm } from '../services/dialogStore'
 import '../styles/BusinessPages.css'
+const catalogsRef = collection(getFirestore(db.app), 'catalogs')
+
 export default function CatalogsPage() {
   const { role } = useAuth(),
     admin = role === 'admin'
@@ -22,28 +25,20 @@ export default function CatalogsPage() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true)
-  useEffect(
-    () =>
-      onSnapshot(
-        collection(db, 'catalogs'),
-        (snap) => {
-          setItems(
-            snap.docs
-              .map((d) => ({ ...d.data(), id: d.id }))
-              .sort((a, b) => a.name.localeCompare(b.name)),
-          )
-          setLoading(false)
-          setError('')
-        },
-        () => {
-          setError(
-            'No se pudieron cargar los catálogos. Revisa tu conexión y permisos.',
-          )
-          setLoading(false)
-        },
-      ),
-    [],
-  )
+  useEffect(() => {
+    let active = true
+    getDocs(catalogsRef).then(snapshot => {
+      if (!active) return
+      setItems(snapshot.docs.map(entry => ({ ...entry.data(), id: entry.id })))
+      setLoading(false)
+    }).catch(() => {
+      if (!active) return
+      setError('No se pudieron cargar los catálogos. Revisa la conexión y los permisos.')
+      setLoading(false)
+    })
+    return () => { active = false }
+  }, [])
+  const sortedItems = [...items].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
   const cancel = () => {
     setEditing(null)
     setForm({ name: '', url: '' })
@@ -63,12 +58,13 @@ export default function CatalogsPage() {
         url,
         updatedAt: new Date().toISOString(),
       }
-      if (editing) await updateDoc(doc(db, 'catalogs', editing), data)
-      else
-        await addDoc(collection(db, 'catalogs'), {
-          ...data,
-          createdAt: new Date().toISOString(),
-        })
+      if (editing) {
+        await updateDoc(doc(catalogsRef, editing), data)
+        setItems(previous => previous.map(item => item.id === editing ? { ...item, ...data } : item))
+      } else {
+        const entry = await addDoc(catalogsRef, { ...data, createdAt: data.updatedAt })
+        setItems(previous => [...previous, { ...data, id: entry.id }])
+      }
       cancel()
       notify('Catálogo guardado', 'success')
     } catch {
@@ -89,7 +85,8 @@ export default function CatalogsPage() {
       return
     setBusy(true)
     try {
-      await deleteDoc(doc(db, 'catalogs', item.id))
+      await deleteDoc(doc(catalogsRef, item.id))
+      setItems(previous => previous.filter(entry => entry.id !== item.id))
       if (editing === item.id) cancel()
       notify('Catálogo eliminado', 'success')
     } catch {
@@ -101,8 +98,7 @@ export default function CatalogsPage() {
   return (
     <div className="business-page">
       <h2>Catálogos</h2>
-      <p>Consulta los catálogos disponibles del negocio.</p>
-      {admin && (
+      {admin && !error && !loading && (
         <form onSubmit={save}>
           <h5>{editing ? 'Editar catálogo' : 'Nuevo catálogo'}</h5>
           <fieldset disabled={busy}>
@@ -162,17 +158,17 @@ export default function CatalogsPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {sortedItems.map((item) => (
                 <tr key={item.id}>
                   <td>{item.name}</td>
-                  <td>
+                  <td className="text-break">
                     {safeCatalogUrl(item.url) ? (
                       <a
                         href={safeCatalogUrl(item.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        Abrir catálogo
+                        {item.url}
                       </a>
                     ) : (
                       <span>Enlace no válido</span>

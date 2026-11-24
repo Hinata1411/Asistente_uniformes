@@ -103,10 +103,24 @@ function OrderForm({ order }) {
   const fromInventory =
     !advertising && (!garment || form.garmentSource === 'inventory')
   const sides = areaKeys(form.customizationSide)
+  const quoteSides = sides.length ? sides : ['']
   const quantity = advertising ? 1 : Number(form.quantity)
-  const base = Number(form.unitBasePrice || 0)
+  const reservedQuantity = order && product && order.productId === product.id &&
+    (!order.garmentSource || order.garmentSource === 'inventory')
+      ? Number(order.quantity) || 0
+      : 0
+  const availableQuantity = fromInventory && product
+    ? Number(product.stock || 0) + reservedQuantity
+    : undefined
+  const exceedsStock = availableQuantity !== undefined && quantity > availableQuantity
+  const usesSavedPrice = fromInventory && Boolean(product) &&
+    order?.productId === product.id && Number(order.unitBasePrice) > 0
+  const inventoryPrice = usesSavedPrice ? Number(order.unitBasePrice) : product?.price
+  const base = fromInventory
+    ? Number(inventoryPrice ?? 0)
+    : advertising ? Number(form.unitBasePrice || 0) : 0
   const surcharge = garment
-    ? sides.reduce((sum, s) => sum + Number(areaDetails[s]?.surcharge || 0), 0)
+    ? quoteSides.reduce((sum, s) => sum + Number(areaDetails[s]?.surcharge || 0), 0)
     : 0
   const unitPrice = money(base + surcharge),
     total = money(unitPrice * quantity)
@@ -134,6 +148,16 @@ function OrderForm({ order }) {
   }, [signature])
   const aiCurrent = ai?.signature === signature
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const selectCustomizationSide = (value) => {
+    const [firstSide] = areaKeys(value)
+    set('customizationSide', value)
+    if (firstSide) {
+      setAreaDetails((prev) => {
+        const { '': draft, ...details } = prev
+        return draft ? { ...details, [firstSide]: { ...draft, ...details[firstSide] } } : prev
+      })
+    }
+  }
   const selectProduct = (id) => {
     const p = products.find((p) => p.id === id)
     setForm((prev) => ({
@@ -174,12 +198,16 @@ function OrderForm({ order }) {
       throw new Error('Revisa la fecha de toma y la fecha prevista de entrega.')
     if (!Number.isInteger(quantity) || quantity <= 0)
       throw new Error('La cantidad debe ser un número entero mayor que cero.')
-    if (!validAmount(form.unitBasePrice) || !Number.isFinite(total))
-      throw new Error('Ingresa un precio válido, igual o mayor a cero.')
     if (fromInventory && (!product || product.legacyMultiSize))
       throw new Error(
         'Selecciona un producto válido con inventario individual.',
       )
+    if (exceedsStock)
+      throw new Error(`La cantidad supera el stock disponible (${availableQuantity}).`)
+    if (fromInventory && (!Number.isFinite(base) || base <= 0))
+      throw new Error('El producto necesita un precio mayor a cero en el inventario.')
+    if ((advertising && !validAmount(form.unitBasePrice)) || !Number.isFinite(total))
+      throw new Error('Ingresa un monto válido, igual o mayor a cero.')
     if (advertising && !form.description.trim())
       throw new Error('Describe el trabajo de publicidad.')
     if (garment) {
@@ -219,14 +247,23 @@ function OrderForm({ order }) {
       validateFields()
       setLoadingAI(true)
       setAi(null)
+      const apiUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/+$/, '') ||
+        (import.meta.env.DEV ? 'http://localhost:3001' : '')
+      if (!apiUrl) {
+        throw new Error('Falta configurar la URL del servicio de IA para este entorno.')
+      }
+      if (!auth.currentUser) {
+        throw new Error('Inicia sesión de nuevo para usar la validación con IA.')
+      }
+      const token = await getIdToken(auth.currentUser)
       const preview = await editor.current.generatePreview()
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/ai/recommendation`,
+        `${apiUrl}/api/ai/recommendation`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${await getIdToken(auth.currentUser)}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             garmentSource: form.garmentSource,
@@ -251,14 +288,16 @@ function OrderForm({ order }) {
             })),
           }),
         },
-      )
-      const data = await response.json()
+      ).catch(() => {
+        throw new Error('No se pudo conectar con el servicio de IA. Verifica que el servidor esté disponible y permita esta dirección.')
+      })
+      const data = await response.json().catch(() => null)
       if (!response.ok)
         throw new Error(
-          data.message || 'No se pudo validar la personalización.',
+          data?.message || data?.error || 'No se pudo validar la personalización.',
         )
       const result =
-        typeof data.result === 'string' ? JSON.parse(data.result) : data.result
+        typeof data?.result === 'string' ? JSON.parse(data.result) : data?.result
       if (!result || !result.riskLevel)
         throw new Error('La validación recibida no es válida.')
       if (latestSignature.current !== requestSignature)
@@ -434,15 +473,46 @@ function OrderForm({ order }) {
           type="submit"
           className="fab-save-button"
           disabled={saving || loadingAI}
-          title="Guardar pedido"
-          aria-label="Guardar pedido"
         >
-          {saving ? '…' : '✓'}
+          {saving ? 'Guardando…' : '✓ Guardar pedido'}
         </button>
       </div>
       <fieldset disabled={saving}>
         <section className="order-section">
-          <h3>Tipo de pedido</h3>
+          <h3>1 Información del cliente</h3>
+          <div className="row g-3">
+            <Field
+              label="Nombre del cliente"
+              value={form.customerName}
+              onChange={(v) => set('customerName', v)}
+              required
+            />
+            <Field
+              label="Teléfono"
+              value={form.phone}
+              onChange={(v) =>
+                set('phone', v.replace(/\D/g, '').slice(0, 8))
+              }
+              required
+            />
+            <Field
+              label="Fecha de toma del pedido"
+              type="date"
+              value={form.orderDate}
+              onChange={(v) => set('orderDate', v)}
+              required
+            />
+            <Field
+              label="Fecha prevista de entrega"
+              type="date"
+              value={form.expectedDeliveryDate}
+              onChange={(v) => set('expectedDeliveryDate', v)}
+              required
+            />
+          </div>
+        </section>
+        <section className="order-section">
+          <h3>2 Tipo de pedido</h3>
           <div className="category-options">
             {Object.entries(CATEGORIES).map(([value, label]) => (
               <label
@@ -470,41 +540,8 @@ function OrderForm({ order }) {
         {form.category && (
           <>
             <section className="order-section">
-              <h3>1 Información del cliente</h3>
-              <div className="row g-3">
-                <Field
-                  label="Nombre del cliente"
-                  value={form.customerName}
-                  onChange={(v) => set('customerName', v)}
-                  required
-                />
-                <Field
-                  label="Teléfono"
-                  value={form.phone}
-                  onChange={(v) =>
-                    set('phone', v.replace(/\D/g, '').slice(0, 8))
-                  }
-                  required
-                />
-                <Field
-                  label="Fecha de toma del pedido"
-                  type="date"
-                  value={form.orderDate}
-                  onChange={(v) => set('orderDate', v)}
-                  required
-                />
-                <Field
-                  label="Fecha prevista de entrega"
-                  type="date"
-                  value={form.expectedDeliveryDate}
-                  onChange={(v) => set('expectedDeliveryDate', v)}
-                  required
-                />
-              </div>
-            </section>
-            <section className="order-section">
               <h3>
-                2{' '}
+                3{' '}
                 {advertising
                   ? 'Trabajo de publicidad'
                   : 'Configuración del producto'}
@@ -528,41 +565,44 @@ function OrderForm({ order }) {
                   </select>
                 </label>
               )}
-              {fromInventory && (
-                <>
-                  <label className="form-label d-block">
-                    Producto del inventario
-                    <select
-                      required
-                      className="form-select"
-                      value={form.productId}
-                      onChange={(e) => selectProduct(e.target.value)}
-                    >
-                      <option value="">Seleccione</option>
-                      {products.map((p) => (
-                        <option
-                          key={p.id}
-                          value={p.id}
-                          disabled={p.legacyMultiSize}
-                        >
-                          {p.name} / {p.size || p.color || ''} / Stock {p.stock}
-                          {p.legacyMultiSize ? ' — separar tallas' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {loadingProducts && <p>Cargando productos...</p>}
-                  {productsError && (
-                    <div className="alert alert-danger">
-                      No se pudo cargar el inventario.{' '}
-                      <button type="button" onClick={reloadProducts}>
-                        Reintentar
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
               <div className="row g-3">
+                {fromInventory && (
+                  <>
+                    <label className={garment ? 'col-md-6' : 'col-12'}>
+                      {garment ? 'Tipo de prenda' : 'Producto del inventario'}
+                      <select
+                        required
+                        className="form-select"
+                        value={form.productId}
+                        onChange={(e) => selectProduct(e.target.value)}
+                      >
+                        <option value="">Seleccione</option>
+                        {products.map((p) => (
+                          <option
+                            key={p.id}
+                            value={p.id}
+                            disabled={p.legacyMultiSize}
+                          >
+                            {[p.name, p.size, p.color, `Stock ${p.stock}`].filter(Boolean).join(' / ')}
+                            {p.legacyMultiSize ? ' — separar tallas' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {garment && (
+                      <Field label="Color de la prenda" value={product?.color || ''} readOnly />
+                    )}
+                    {loadingProducts && <p>Cargando productos...</p>}
+                    {productsError && (
+                      <div className="alert alert-danger">
+                        No se pudo cargar el inventario.{' '}
+                        <button type="button" onClick={reloadProducts}>
+                          Reintentar
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
                 {garment && !fromInventory && (
                   <>
                     <Field
@@ -595,8 +635,16 @@ function OrderForm({ order }) {
                     value={form.quantity}
                     onChange={(v) => set('quantity', v)}
                     min="1"
+                    max={availableQuantity}
                     step="1"
                     required
+                    aria-invalid={exceedsStock || undefined}
+                    hint={availableQuantity !== undefined && (
+                      <span className={exceedsStock ? 'form-text text-danger' : 'form-text'} aria-live="polite">
+                        {exceedsStock ? 'La cantidad supera el stock disponible. ' : ''}
+                        Disponibles para este pedido: {availableQuantity}.
+                      </span>
+                    )}
                   />
                 )}
                 {garment && (
@@ -625,7 +673,7 @@ function OrderForm({ order }) {
                         className="form-select"
                         value={form.customizationSide}
                         onChange={(e) =>
-                          set('customizationSide', e.target.value)
+                          selectCustomizationSide(e.target.value)
                         }
                       >
                         <option value="">Seleccione</option>
@@ -663,21 +711,26 @@ function OrderForm({ order }) {
               </div>
             </section>
             <section className="order-section">
-              <h3>3 Cotización y forma de pago</h3>
+              <h3>4 Cotización y forma de pago</h3>
               <div className="row g-3">
-                <Field
-                  label={
-                    advertising
-                      ? 'Monto del trabajo (Q)'
-                      : 'Precio base unitario (Q)'
-                  }
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.unitBasePrice}
-                  onChange={(v) => set('unitBasePrice', v)}
-                  required
-                />
+                {advertising && (
+                  <Field
+                    label="Monto del trabajo (Q)"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.unitBasePrice}
+                    onChange={(v) => set('unitBasePrice', v)}
+                    required
+                  />
+                )}
+                {fromInventory && (
+                  <Field
+                    label="Precio base unitario (Q)"
+                    value={Number.isFinite(inventoryPrice) ? inventoryPrice.toFixed(2) : ''}
+                    readOnly
+                  />
+                )}
                 {!garment && !advertising && (
                   <Field
                     label="Tamaño o especificaciones"
@@ -686,9 +739,9 @@ function OrderForm({ order }) {
                   />
                 )}
                 {garment &&
-                  sides.map((side) => (
+                  quoteSides.map((side) => (
                     <div key={side} className="col-12">
-                      <h6>{AREA_LABELS[side]}</h6>
+                      {side && <h6>{AREA_LABELS[side]}</h6>}
                       <div className="row g-2">
                         <Field
                           label="Tamaño de la personalización"
@@ -728,7 +781,9 @@ function OrderForm({ order }) {
               <p className="form-text">
                 {advertising
                   ? 'Monto total del trabajo.'
-                  : 'El precio base más los recargos por unidad se multiplica por la cantidad.'}
+                  : fromInventory
+                    ? 'El precio base más los recargos por unidad se multiplica por la cantidad.'
+                    : 'Los recargos por unidad se multiplican por la cantidad.'}
               </p>
               <label>
                 Forma de pago
@@ -762,7 +817,7 @@ function OrderForm({ order }) {
             {garment ? (
               <>
                 <section className="order-section">
-                  <h3>4 Personalización de la prenda</h3>
+                  <h3>5 Personalización de la prenda</h3>
                   {!fromInventory && (
                     <div className="row g-3 mb-3">
                       {sides.map((side) => (
@@ -809,10 +864,9 @@ function OrderForm({ order }) {
                   />
                 </section>
                 <section className="order-section">
-                  <h3>5 Validación inteligente</h3>
+                  <h3>6 Validación inteligente</h3>
                   <p>
-                    Valida el diseño actual antes de guardar con el check
-                    amarillo.
+                    Valida el diseño antes de pulsar Guardar pedido.
                   </p>
                   <button
                     type="button"
@@ -834,7 +888,7 @@ function OrderForm({ order }) {
               </>
             ) : (
               <section className="order-section">
-                <h3>4 Imágenes para la cotización</h3>
+                <h3>5 Imágenes para la cotización</h3>
                 <p>Agrega hasta 8 imágenes. Se incluirán en el PDF.</p>
                 <input
                   type="file"
@@ -867,37 +921,32 @@ function OrderForm({ order }) {
                 </div>
               </section>
             )}
-            <div className="d-flex gap-2 mb-4">
-              <button
-                type="submit"
-                className="btn btn-warning"
-                disabled={saving || loadingAI}
-              >
-                {saving ? 'Guardando...' : '✓ Guardar pedido'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline-secondary"
-                onClick={() => navigate('/historial')}
-              >
-                Cancelar
-              </button>
-            </div>
           </>
         )}
       </fieldset>
+      <div className="order-cancel-actions mb-4">
+        <button
+          type="button"
+          className="btn btn-outline-secondary"
+          disabled={saving}
+          onClick={() => navigate('/historial')}
+        >
+          Cancelar
+        </button>
+      </div>
     </form>
   )
 }
-function Field({ label, onChange, ...props }) {
+function Field({ label, onChange, hint, ...props }) {
   return (
     <label className="col-md-6">
       {label}
       <input
         className="form-control"
         {...props}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange && ((e) => onChange(e.target.value))}
       />
+      {hint}
     </label>
   )
 }

@@ -87,7 +87,7 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
 
       trRef.current.getLayer().batchDraw()
     }
-  }, [isSelected])
+  }, [image, isSelected])
 
   if (!image) {
     return null
@@ -102,6 +102,7 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
         y={element.y}
         width={element.width}
         height={element.height}
+        rotation={element.rotation ?? 0}
         draggable
         onClick={onSelect}
         onTap={onSelect}
@@ -132,6 +133,7 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
             width: Math.max(30, node.width() * scaleX),
 
             height: Math.max(30, node.height() * scaleY),
+            rotation: node.rotation(),
           })
         }}
       />
@@ -139,7 +141,8 @@ function ImageElement({ element, isSelected, onSelect, onChange }) {
       {isSelected && (
         <Transformer
           ref={trRef}
-          rotateEnabled={false}
+          rotateEnabled
+          flipEnabled={false}
           keepRatio
           enabledAnchors={[
             'top-left',
@@ -197,8 +200,10 @@ function TextElement({ element, isSelected, onSelect, onChange }) {
         x={element.x}
         y={element.y}
         fontSize={element.fontSize}
+        rotation={element.rotation ?? 0}
         fill={element.color}
-        fontStyle={element.bold ? 'bold' : 'normal'}
+        fontStyle={[element.bold && 'bold', element.letterStyle === 'italic' && 'italic'].filter(Boolean).join(' ') || 'normal'}
+        fontFamily={element.letterStyle === 'script' ? 'Segoe Script, Brush Script MT, cursive' : 'Arial'}
         draggable
         onClick={onSelect}
         onTap={onSelect}
@@ -227,6 +232,7 @@ function TextElement({ element, isSelected, onSelect, onChange }) {
             y: node.y(),
 
             fontSize: Math.max(18, element.fontSize * scaleX),
+            rotation: node.rotation(),
           })
         }}
       />
@@ -234,7 +240,8 @@ function TextElement({ element, isSelected, onSelect, onChange }) {
       {isSelected && (
         <Transformer
           ref={trRef}
-          rotateEnabled={false}
+          rotateEnabled
+          flipEnabled={false}
           keepRatio
           enabledAnchors={[
             'top-left',
@@ -549,17 +556,54 @@ const GarmentEditor = forwardRef(function GarmentEditor(
                     }
                   />
                 </label>
+                <label className="col">
+                  Estilo de letra
+                  <select
+                    className="form-select"
+                    value={selected.letterStyle ?? 'regular'}
+                    onChange={(event) => change({ ...selected, letterStyle: event.target.value })}
+                  >
+                    <option value="regular">Normal</option>
+                    <option value="italic">Cursiva</option>
+                    <option value="script">Letra de carta</option>
+                  </select>
+                </label>
                 <button
                   type="button"
-                  className="btn btn-dark col"
+                  className="btn btn-dark col-auto align-self-end"
+                  aria-pressed={Boolean(selected.bold)}
                   onClick={() => change({ ...selected, bold: !selected.bold })}
                 >
                   Negrita
                 </button>
               </div>
             )}
+            {selected && (
+              <div className="d-flex flex-wrap align-items-end gap-2 mt-2">
+                <label>
+                  {selected.type === 'text' ? 'Giro del texto (°)' : 'Giro de la imagen (°)'}
+                  <input
+                    className="form-control"
+                    type="number"
+                    step="any"
+                    value={Math.round((selected.rotation ?? 0) * 10) / 10}
+                    onChange={(event) => {
+                      const angle = event.target.valueAsNumber
+                      if (Number.isFinite(angle)) change({ ...selected, rotation: angle })
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => change({ ...selected, rotation: 0 })}
+                >
+                  Restablecer giro
+                </button>
+              </div>
+            )}
             {selected?.type === 'image' && (
-              <div className="d-flex gap-2 mt-2">
+              <div className="d-flex flex-wrap gap-2 mt-2">
                 {[0.8, 1.2].map((f) => (
                   <button
                     type="button"

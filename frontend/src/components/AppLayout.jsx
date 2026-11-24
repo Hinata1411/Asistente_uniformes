@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase/config'
-import { useAuth } from '../context/authState'
+import { useAuth } from '../context/AuthContext'
 import useSessionTimeout from '../hooks/useSessionTimeout'
 import logo from '../assets/brand/arte-grafia-logo.png'
 import '../styles/AppLayout.css'
@@ -15,7 +15,8 @@ function AppLayout({ children }) {
 
   const [isDesktop, setIsDesktop] = useState(
     () =>
-      typeof window !== 'undefined' && window.matchMedia(DESKTOP_QUERY).matches,
+      typeof window !== 'undefined' &&
+      window.matchMedia(DESKTOP_QUERY).matches
   )
 
   // En escritorio la barra inicia abierta; en móvil, cerrada.
@@ -23,7 +24,7 @@ function AppLayout({ children }) {
 
   useSessionTimeout({
     timeoutMinutes: 30,
-    warningMinutes: 15,
+    warningMinutes: 15
   })
 
   useEffect(() => {
@@ -61,7 +62,7 @@ function AppLayout({ children }) {
   const sidebarClassName = [
     'app-sidebar',
     isDesktop && !sidebarOpen ? 'is-collapsed' : '',
-    !isDesktop && sidebarOpen ? 'is-open-mobile' : '',
+    !isDesktop && sidebarOpen ? 'is-open-mobile' : ''
   ]
     .filter(Boolean)
     .join(' ')
@@ -74,7 +75,7 @@ function AppLayout({ children }) {
         : 'toggle-desktop-collapsed'
       : sidebarOpen
         ? 'toggle-mobile-open'
-        : 'toggle-mobile-closed',
+        : 'toggle-mobile-closed'
   ].join(' ')
 
   return (
@@ -98,7 +99,11 @@ function AppLayout({ children }) {
 
       <aside className={sidebarClassName}>
         <div className="sidebar-brand">
-          <img src={logo} alt="Arte Grafia" className="sidebar-logo-img" />
+          <img
+            src={logo}
+            alt="Arte Grafia"
+            className="sidebar-logo-img"
+          />
 
           <div className="sidebar-brand-text">
             <h4>Asistente</h4>
@@ -142,13 +147,39 @@ function AppLayout({ children }) {
               </Link>
 
               <Link
+                to="/catalogos"
+                className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">▤</span>
+                <span className="sidebar-label">Catálogos</span>
+              </Link>
+
+              <Link
                 to="/productos"
                 className={`sidebar-link ${
                   isActive('/productos') ? 'active' : ''
                 }`}
               >
                 <span className="sidebar-icon">▦</span>
-                <span className="sidebar-label">Productos</span>
+                <span className="sidebar-label">Inventario</span>
+              </Link>
+
+              <div className="sidebar-section-title">Registros</div>
+
+              <Link
+                to="/gastos"
+                className={`sidebar-link ${isActive('/gastos') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">Q</span>
+                <span className="sidebar-label">Gastos</span>
+              </Link>
+
+              <Link
+                to="/graficas"
+                className={`sidebar-link ${isActive('/graficas') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">▥</span>
+                <span className="sidebar-label">Gráficas</span>
               </Link>
             </>
           )}
@@ -186,35 +217,31 @@ function AppLayout({ children }) {
                 <span className="sidebar-icon">▤</span>
                 <span className="sidebar-label">Pedidos</span>
               </Link>
+
+              <Link
+                to="/catalogos"
+                className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
+              >
+                <span className="sidebar-icon" aria-hidden="true">▤</span>
+                <span className="sidebar-label">Catálogos</span>
+              </Link>
             </>
           )}
-          {role === 'admin' && (
-            <Link
-              to="/gastos"
-              className={`sidebar-link ${isActive('/gastos') ? 'active' : ''}`}
-            >
-              <span className="sidebar-icon">Q</span>
-              <span className="sidebar-label">Gastos</span>
-            </Link>
-          )}
-          <Link
-            to="/catalogos"
-            className={`sidebar-link ${isActive('/catalogos') ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">▤</span>
-            <span className="sidebar-label">Catálogos</span>
-          </Link>
         </nav>
 
         <div className="sidebar-footer">
           <Link
             to="/perfil"
             onClick={handleNavClick}
-            className={`sidebar-link ${isActive('/perfil') ? 'active' : ''}`}
+            className={`sidebar-link ${
+              isActive('/perfil') ? 'active' : ''
+            }`}
           >
             <span className="sidebar-icon">⚙</span>
 
-            <span className="sidebar-label">Mi perfil</span>
+            <span className="sidebar-label">
+              Mi perfil
+            </span>
           </Link>
           <div className="sidebar-user">
             <div className="user-avatar">

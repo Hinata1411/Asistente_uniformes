@@ -5,7 +5,6 @@ import {
   displayOrderDate,
   getProductName,
   getPaymentSummary,
-  getStatusBadge,
 } from './orderFormatting'
 
 // Generación del PDF descargable de un pedido. Se mantiene separado de
@@ -19,32 +18,9 @@ const BRAND_GOLD = [255, 198, 3]
 const TEXT_DARK = [26, 26, 26]
 const TEXT_MUTED = [107, 114, 128]
 const LIGHT_GOLD_BORDER = [240, 226, 171]
-
-// Mismos colores que styles/statusBadges.css, para que el estado se
-// vea igual en el PDF que en el historial.
-const STATUS_PDF_COLORS = {
-  amber: { bg: [255, 244, 204], text: [122, 94, 0] },
-  gold: { bg: [255, 198, 3], text: [26, 26, 26] },
-  black: { bg: [0, 0, 0], text: [255, 198, 3] },
-  outline: { bg: [255, 255, 255], text: [26, 26, 26] },
-  slate: { bg: [75, 85, 99], text: [255, 255, 255] },
-  green: { bg: [22, 163, 74], text: [255, 255, 255] },
-  red: { bg: [220, 38, 38], text: [255, 255, 255] },
-}
-
-const getStatusPdfColors = (status) => {
-  const className = getStatusBadge(status).className
-  const key = className.split(' ')[1]?.replace('status-badge-', '')
-  return STATUS_PDF_COLORS[key] || STATUS_PDF_COLORS.amber
-}
-
-// bg-success / bg-warning text-dark / bg-secondary → mismos colores
-// que el badge de "Situación de pago" del historial.
-const getPaymentPdfColors = (badge) => {
-  if (badge?.includes('success')) return STATUS_PDF_COLORS.green
-  if (badge?.includes('warning')) return STATUS_PDF_COLORS.amber
-  return { bg: [229, 231, 235], text: [55, 65, 81] }
-}
+const LIGHT_GOLD_BG = [253, 246, 220]
+const SOFT_BG = [249, 248, 245]
+const GOLD_INK = [105, 72, 0]
 
 /*
   Convierte la vista previa (una URL de Firebase Storage) en un data
@@ -89,20 +65,22 @@ function loadImageAsDataUrl(url) {
 }
 
 export async function generateOrderPdf(order, { download = true } = {}) {
-  const garment = categoryOf(order) === 'prenda'
-  const brandLogo = await loadImageAsDataUrl(logoUrl)
-  const referenceImages = await Promise.all(
-    (order.referenceImages || [])
-      .filter((src) => src !== order.previewImage)
-      .map(loadImageAsDataUrl),
-  )
-  // Se resuelve ANTES de dibujar nada: si la imagen no carga (sin
-  // conexión, CORS del bucket, etc.) el PDF sigue generándose igual,
-  // solo que sin la vista previa.
-  let previewImageData = null
-
-  if (order.previewImage)
-    previewImageData = await loadImageAsDataUrl(order.previewImage)
+  const category = categoryOf(order)
+  const garment = category === 'prenda'
+  const customerGarment = garment && (order.garmentSource === 'customer' ||
+    (!order.garmentSource && (order.customerGarment || order.customerGarmentImage)))
+  const images = [
+    { label: 'Vista previa de la personalización', src: order.previewImage },
+    ...(Array.isArray(order.referenceImages) ? order.referenceImages : [])
+      .filter(Boolean)
+      .filter((src, index, list) => src !== order.previewImage && list.indexOf(src) === index)
+      .map((src, index) => ({ label: 'Imagen de referencia ' + (index + 1), src })),
+  ].filter(({ src }) => src)
+  const tryImage = (src) => loadImageAsDataUrl(src).catch(() => null)
+  const [brandLogo, ...loadedImages] = await Promise.all([
+    tryImage(logoUrl),
+    ...images.map(({ src }) => tryImage(src)),
+  ])
 
   const docPDF = new jsPDF()
   const pageWidth = docPDF.internal.pageSize.getWidth()
@@ -112,6 +90,7 @@ export async function generateOrderPdf(order, { download = true } = {}) {
   const bottomLimit = pageHeight - 22
 
   const payment = getPaymentSummary(order)
+  const formatMoney = (value) => 'Q' + (Number(value) || 0).toFixed(2)
 
   let y = 0
 
@@ -128,16 +107,20 @@ export async function generateOrderPdf(order, { download = true } = {}) {
   }
 
   const heading = (text) => {
-    ensureSpace(14)
+    ensureSpace(23)
+    docPDF.setFillColor(...BRAND_GOLD)
+    docPDF.roundedRect(marginX, y - 4.2, 2.3, 6, 0.7, 0.7, 'F')
     docPDF.setTextColor(...TEXT_DARK)
     docPDF.setFont('helvetica', 'bold')
     docPDF.setFontSize(13)
-    docPDF.text(text, marginX, y)
-    docPDF.setDrawColor(...BRAND_GOLD)
-    docPDF.setLineWidth(0.8)
-    docPDF.line(marginX, y + 2, marginX + 26, y + 2)
-    docPDF.setLineWidth(0.2)
-    y += 9
+    docPDF.text(text, marginX + 5, y)
+
+    const labelEnd = marginX + 8 + docPDF.getTextWidth(text)
+    docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
+    docPDF.setLineWidth(0.35)
+    if (labelEnd < marginX + contentWidth)
+      docPDF.line(labelEnd, y - 1.2, marginX + contentWidth, y - 1.2)
+    y += 7
   }
 
   const paragraph = (text, options = {}) => {
@@ -156,39 +139,97 @@ export async function generateOrderPdf(order, { download = true } = {}) {
     }
   }
 
-  // Fila "etiqueta ......... monto", con el monto alineado a la derecha.
-  const lineItem = (label, value, options = {}) => {
-    const { bold = false, fontSize = 10.5 } = options
-
-    ensureSpace(6.4)
-    docPDF.setFont('helvetica', bold ? 'bold' : 'normal')
-    docPDF.setFontSize(fontSize)
+  const lineItem = (label, value) => {
+    ensureSpace(8.5)
+    docPDF.setFillColor(...SOFT_BG)
+    docPDF.roundedRect(marginX, y - 4, contentWidth, 7, 1, 1, 'F')
+    docPDF.setFont('helvetica', 'normal')
+    docPDF.setFontSize(10.5)
     docPDF.setTextColor(...TEXT_DARK)
-    docPDF.text(label, marginX, y)
-    docPDF.text(value, marginX + contentWidth, y, { align: 'right' })
-    y += 6.4
-  }
-
-  // Caja clara con pares clave/valor en dos columnas (datos del
-  // pedido, forma de pago, etc.).
-  const infoBox = (rows) => {
-    for (const [label, value] of rows)
-      paragraph(`${label}: ${value}`, { fontSize: 10 })
-    y += 3
-  }
-
-  const pill = (label, colors, x, pillY) => {
+    docPDF.text(label, marginX + 4, y + 0.6)
     docPDF.setFont('helvetica', 'bold')
-    docPDF.setFontSize(9)
-    const textWidth = docPDF.getTextWidth(label)
-    const pillWidth = textWidth + 8
+    docPDF.text(value, marginX + contentWidth - 4, y + 0.6, { align: 'right' })
+    y += 8.5
+  }
 
-    docPDF.setFillColor(...colors.bg)
-    docPDF.roundedRect(x, pillY - 5, pillWidth, 7, 3.5, 3.5, 'F')
-    docPDF.setTextColor(...colors.text)
-    docPDF.text(label, x + 4, pillY)
+  const infoBox = (rows, { highlight = '', fill = LIGHT_GOLD_BG } = {}) => {
+    const colWidth = contentWidth / 2
+    const pairs = []
+    docPDF.setFont('helvetica', 'bold')
+    docPDF.setFontSize(10)
+    for (let index = 0; index < rows.length; index += 2) {
+      const cells = rows.slice(index, index + 2).map(([label, value]) => ({
+        label,
+        lines: docPDF.splitTextToSize(String(value), colWidth - 12),
+      }))
+      pairs.push({ cells, height: 8 + Math.max(...cells.map(cell => cell.lines.length)) * 4.3 })
+    }
+    let index = 0
+    while (index < pairs.length) {
+      const pair = pairs[index]
+      if (pair.height > bottomLimit - 32) {
+        for (const { label, lines } of pair.cells) paragraph(label + ': ' + lines.join(' '))
+        index++
+        continue
+      }
+      ensureSpace(pair.height + 7)
+      let height = 6
+      let end = index
+      while (end < pairs.length && y + height + pairs[end].height <= bottomLimit) {
+        height += pairs[end].height
+        end++
+      }
+      docPDF.setFillColor(...fill)
+      docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
+      docPDF.setLineWidth(0.35)
+      docPDF.roundedRect(marginX, y - 3, contentWidth, height, 2, 2, 'FD')
+      let rowY = y
+      for (; index < end; index++) {
+        const { cells, height: rowHeight } = pairs[index]
+        cells.forEach(({ label, lines }, col) => {
+          const x = marginX + col * colWidth
+          if (label === highlight) {
+            docPDF.setFillColor(...LIGHT_GOLD_BG)
+            docPDF.roundedRect(x + 2, rowY, colWidth - 4, rowHeight, 1.3, 1.3, 'F')
+          }
+          docPDF.setFont('helvetica', 'bold')
+          docPDF.setFontSize(8)
+          docPDF.setTextColor(...GOLD_INK)
+          docPDF.text(label.toUpperCase(), x + 6, rowY + 4)
+          docPDF.setFontSize(10)
+          docPDF.setTextColor(...TEXT_DARK)
+          lines.forEach((line, lineIndex) => docPDF.text(line, x + 6, rowY + 8.5 + 4.3 * lineIndex))
+        })
+        rowY += rowHeight
+      }
+      y += height + 4
+    }
+  }
 
-    return pillWidth
+  const detailBox = (label, value) => {
+    docPDF.setFont('helvetica', 'normal')
+    docPDF.setFontSize(10.5)
+    const lines = docPDF.splitTextToSize(value, contentWidth - 14)
+    let index = 0
+    while (index < lines.length) {
+      ensureSpace(21)
+      const count = Math.min(lines.length - index, Math.floor((bottomLimit - y - 13) / 5))
+      const height = 13 + count * 5
+      docPDF.setFillColor(...SOFT_BG)
+      docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
+      docPDF.setLineWidth(0.35)
+      docPDF.roundedRect(marginX, y - 3, contentWidth, height, 2, 2, 'FD')
+      docPDF.setFont('helvetica', 'bold')
+      docPDF.setTextColor(...GOLD_INK)
+      docPDF.text(index ? label + ' (continuación)' : label, marginX + 6, y + 4)
+      docPDF.setFont('helvetica', 'normal')
+      docPDF.setTextColor(...TEXT_DARK)
+      lines.slice(index, index + count).forEach((line, row) => {
+        docPDF.text(line, marginX + 6, y + 10 + row * 5)
+      })
+      index += count
+      y += height + 3
+    }
   }
 
   // =========================
@@ -196,46 +237,49 @@ export async function generateOrderPdf(order, { download = true } = {}) {
   // =========================
 
   docPDF.setFillColor(...BRAND_BLACK)
-  docPDF.rect(0, 0, pageWidth, 60, 'F')
-  docPDF.addImage(brandLogo.dataUrl, 'PNG', marginX, 8, 27, 27)
+  docPDF.rect(0, 0, pageWidth, 57, 'F')
+  docPDF.setFillColor(...BRAND_GOLD)
+  docPDF.rect(0, 57, pageWidth, 1.4, 'F')
+  if (brandLogo) {
+    const scale = Math.min(31 / brandLogo.width, 33 / brandLogo.height)
+    const width = brandLogo.width * scale
+    const height = brandLogo.height * scale
+    docPDF.addImage(brandLogo.dataUrl, 'PNG', marginX + (31 - width) / 2,
+      (57 - height) / 2, width, height)
+  }
+  const headerX = marginX + 41
   docPDF.setTextColor(...BRAND_GOLD)
   docPDF.setFont('helvetica', 'bold')
-  docPDF.setFontSize(20)
-  docPDF.text('Arte Grafía', marginX + 34, 16)
+  docPDF.setFontSize(23)
+  docPDF.text('Arte Grafía', headerX, 15)
   docPDF.setTextColor(255, 255, 255)
+  docPDF.setFontSize(12)
+  docPDF.text('Cotización de pedido', headerX, 22)
   docPDF.setFont('helvetica', 'normal')
-  docPDF.setFontSize(10)
-  docPDF.text('Cotización de pedido', marginX + 34, 23)
-  docPDF.text('Teléfono: 5425-3023', marginX + 34, 30)
+  docPDF.setFontSize(9)
+  docPDF.text('Avenida Chipilapa 3-69, zona 2, Barrio La Esperanza,', headerX, 31)
+  docPDF.text('Jalapa, Jalapa, Guatemala', headerX, 35.5)
+
+  const socialY = 42
+  docPDF.setDrawColor(...BRAND_GOLD)
   docPDF.setFillColor(...BRAND_GOLD)
-  docPDF.roundedRect(marginX + 34, 34, 5, 5, 1, 1, 'F')
+  docPDF.setLineWidth(0.45)
+  docPDF.roundedRect(headerX, socialY, 5, 5, 1.1, 1.1, 'S')
+  docPDF.circle(headerX + 2.5, socialY + 2.5, 1.15, 'S')
+  docPDF.circle(headerX + 3.8, socialY + 1.2, 0.32, 'F')
+  docPDF.text('@artegrafiauniformes', headerX + 7.5, socialY + 3.6)
+  const facebookX = headerX + 49
+  docPDF.roundedRect(facebookX, socialY, 5, 5, 0.8, 0.8, 'F')
   docPDF.setTextColor(...BRAND_BLACK)
   docPDF.setFont('helvetica', 'bold')
   docPDF.setFontSize(13)
-  docPDF.text('f', marginX + 35.8, 38.4)
+  docPDF.text('f', facebookX + 1.7, socialY + 4.5)
   docPDF.setTextColor(255, 255, 255)
   docPDF.setFont('helvetica', 'normal')
   docPDF.setFontSize(9)
-  docPDF.text('Facebook: ArteGrafía', marginX + 42, 38)
-  docPDF.setDrawColor(...BRAND_GOLD)
-  docPDF.setLineWidth(0.5)
-  docPDF.roundedRect(marginX + 100, 34, 5, 5, 1.3, 1.3, 'S')
-  docPDF.circle(marginX + 102.5, 36.5, 1.2, 'S')
-  docPDF.circle(marginX + 104, 35, 0.3, 'F')
-  docPDF.setTextColor(255, 255, 255)
-  docPDF.text('Instagram: ArteGrafía', marginX + 108, 38)
-  docPDF.setFontSize(8)
-  docPDF.text(
-    'Avenida Chipilapa 3-69, zona 2, Barrio La Esperanza,',
-    marginX,
-    48,
-  )
-  docPDF.text('Jalapa, Guatemala', marginX, 53)
-  y = 69
-  paragraph(
-    `Folio: ${order.id || 'Sin asignar'} | Generado: ${new Date().toLocaleDateString('es-GT')}`,
-    { fontSize: 9 },
-  )
+  docPDF.text('Arte Grafía', facebookX + 7.5, socialY + 3.6)
+  docPDF.text('Tel. 5425-3023', headerX, 52)
+  y = 70
 
   // =========================
   // DATOS DEL PEDIDO
@@ -246,60 +290,53 @@ export async function generateOrderPdf(order, { download = true } = {}) {
   infoBox([
     ['Cliente', order.customerName || 'No definido'],
     ['Teléfono', order.phone || 'No definido'],
-    [CATEGORIES[categoryOf(order)], getProductName(order)],
-    ['Talla', garment ? order.size || 'No registrada' : 'No aplica'],
+    [CATEGORIES[category] || 'Artículo', getProductName(order, CATEGORIES[category])],
+    ...(garment ? [['Talla', order.size || 'No registrada']] : []),
     ['Cantidad', order.quantity || 0],
-    ['Técnica', garment ? order.technique || 'No registrada' : 'No aplica'],
+    ...(garment ? [['Técnica', order.technique || 'No registrada']] : []),
     ['Fecha del pedido', displayOrderDate(order.orderDate || order.createdAt)],
     ['Entrega prevista', displayOrderDate(order.expectedDeliveryDate)],
   ])
-
-  if (order.deliveredAt) {
-    lineItem('Primera entrega real:', displayOrderDate(order.deliveredAt))
-    y += 2
-  }
 
   // =========================
   // COTIZACIÓN
   // =========================
 
-  if (order.description) paragraph(`Descripción: ${order.description}`)
   heading('Cotización')
-
-  lineItem(
-    categoryOf(order) === 'publicidad'
-      ? 'Monto del trabajo'
-      : 'Precio base unitario',
-    `Q${Number(order.unitBasePrice || 0).toFixed(2)}`,
-  )
+  if (garment && !customerGarment) {
+    lineItem('Precio base de la prenda por unidad', formatMoney(order.unitBasePrice))
+  }
+  if (category === 'publicidad') {
+    lineItem('Monto del trabajo', formatMoney(order.unitBasePrice ?? order.quoteTotal))
+  }
 
   if (garment) {
-    if (order.areaDetails && Object.keys(order.areaDetails).length) {
-      for (const [area, detail] of Object.entries(order.areaDetails)) {
-        paragraph(`${AREA_LABELS[area] || area}: ${detail.size}`, {
-          fontSize: 10,
-        })
-        lineItem(
-          'Recargo por unidad',
-          `Q${Number(detail.surcharge || 0).toFixed(2)}`,
-        )
+    const details = Object.entries(order.areaDetails || {})
+    if (details.length) {
+      for (const [area, detail] of details) {
+        ensureSpace(14)
+        paragraph(`Tamaño de personalización - ${AREA_LABELS[area] || area}: ${detail.size || 'No registrado'}`)
+        if (!customerGarment) lineItem('Recargo por unidad', formatMoney(detail.surcharge))
+      }
+    } else if (order.personalizationSizeBack) {
+      for (const [area, size, surcharge] of [
+        ['Frente', order.personalizationSize, order.personalizationSurchargeFront ?? order.personalizationSurcharge],
+        ['Espalda', order.personalizationSizeBack, order.personalizationSurchargeBack],
+      ]) {
+        ensureSpace(14)
+        paragraph(`Tamaño de personalización - ${area}: ${size || 'No registrado'}`)
+        if (!customerGarment) lineItem('Recargo por unidad', formatMoney(surcharge))
       }
     } else {
-      paragraph(
-        `Tamaño de personalización: ${order.personalizationSize || 'No registrado'}`,
-      )
-      lineItem(
-        'Recargo por personalización',
-        `Q${Number(order.personalizationSurcharge || 0).toFixed(2)}`,
-      )
+      if (order.personalizationSize) paragraph('Tamaño de personalización: ' + order.personalizationSize)
+      if (!customerGarment) lineItem('Recargo por unidad', formatMoney(order.personalizationSurcharge))
     }
-  } else if (order.personalizationSize)
-    paragraph(`Tamaño o especificaciones: ${order.personalizationSize}`)
+  }
 
-  lineItem(
-    'Precio unitario',
-    `Q${Number(order.quotedUnitPrice || 0).toFixed(2)}`,
-  )
+  if (category !== 'publicidad') {
+    const unitPrice = order.quotedUnitPrice ?? (order.quantity > 0 ? payment.total / order.quantity : payment.total)
+    lineItem('Precio unitario', formatMoney(unitPrice))
+  }
 
   y += 2
   ensureSpace(16)
@@ -337,134 +374,37 @@ export async function generateOrderPdf(order, { download = true } = {}) {
     ['Pago final', `Q${payment.final.toFixed(2)}`],
     ['Total pagado', `Q${payment.paid.toFixed(2)}`],
     ['Saldo pendiente', `Q${payment.balance.toFixed(2)}`],
-  ])
+  ], { fill: SOFT_BG, highlight: 'Saldo pendiente' })
 
-  ensureSpace(10)
-  docPDF.setFont('helvetica', 'normal')
-  docPDF.setFontSize(9.5)
-  docPDF.setTextColor(...TEXT_MUTED)
-  docPDF.text('Situación de pago:', marginX, y + 4)
-  pill(payment.label, getPaymentPdfColors(payment.badge), marginX + 34, y + 5)
-  y += 14
+  const description = order.description?.trim() || order.customerGarment?.description?.trim()
+  const specifications = garment ? '' : order.personalizationSize?.trim()
+  if (description || specifications) {
+    ensureSpace(28)
+    heading('Detalles de personalización')
+    if (description) detailBox('Descripción o comentario', description)
+    if (specifications) detailBox('Tamaño o especificaciones', specifications)
+  }
 
-  // =========================
-  // ESTADO DEL PEDIDO
-  // =========================
-
-  ensureSpace(10)
-  docPDF.setFont('helvetica', 'normal')
-  docPDF.setFontSize(9.5)
-  docPDF.setTextColor(...TEXT_MUTED)
-  docPDF.text('Estado del pedido:', marginX, y + 4)
-  pill(
-    getStatusBadge(order.status).label,
-    getStatusPdfColors(order.status),
-    marginX + 34,
-    y + 5,
-  )
-  y += 16
-
-  // =========================
-  // VALIDACIÓN IA
-  // =========================
-
-  if (garment) {
-    heading('Validación del asistente inteligente')
-
-    const aiValidation = order.aiValidation
-
-    if (aiValidation) {
-      lineItem('Nivel de riesgo:', aiValidation.riskLevel || 'No definido')
-
-      y += 1
-      // "Compatibilidad técnica" puede ser una frase larga (no solo una
-      // palabra corta como el nivel de riesgo): con lineItem() el texto
-      // se dibuja alineado a la derecha sin salto de línea y se monta
-      // encima de la etiqueta cuando es largo. paragraph() sí lo envuelve.
-      paragraph(
-        `Compatibilidad técnica: ${aiValidation.techniqueCompatibility || 'No disponible'}`,
-      )
-
-      y += 1
-      paragraph(
-        `Recomendación: ${aiValidation.recommendation || 'No disponible'}`,
-      )
-      paragraph(
-        `Nota para producción: ${aiValidation.productionNote || 'No disponible'}`,
-      )
-
-      const warnings =
-        Array.isArray(aiValidation.warnings) && aiValidation.warnings.length > 0
-          ? aiValidation.warnings.map((warning) => `• ${warning}`).join('\n')
-          : 'Sin advertencias registradas.'
-
-      paragraph(`Advertencias:\n${warnings}`)
-
-      if (order.aiValidatedAt) {
-        paragraph(
-          `Fecha de validación: ${new Date(order.aiValidatedAt).toLocaleString('es-GT')}`,
-          { fontSize: 9, spacing: 5 },
-        )
-      }
-    } else {
-      paragraph('Este pedido no tiene una validación almacenada.')
+  for (let index = 0; index < images.length; index++) {
+    const image = loadedImages[index]
+    if (!image) {
+      heading(images[index].label)
+      paragraph('No se pudo cargar esta imagen.')
+      continue
     }
-
-    y += 4
-  }
-
-  // =========================
-  // VISTA PREVIA
-  // =========================
-
-  const allImages = [previewImageData, ...referenceImages].filter(Boolean)
-  for (let index = 0; index < allImages.length; index++) {
-    const image = allImages[index]
-    const scale = Math.min(contentWidth / image.width, 155 / image.height)
-    const width = image.width * scale,
-      height = image.height * scale
-    ensureSpace(height + 20)
-    heading(index === 0 ? 'Vista previa' : `Imagen de referencia ${index}`)
-    docPDF.addImage(
-      image.dataUrl,
-      'PNG',
-      marginX + (contentWidth - width) / 2,
-      y,
-      width,
-      height,
-    )
+    const naturalScale = Math.min(contentWidth / image.width, 145 / image.height)
+    const naturalHeight = image.height * naturalScale
+    ensureSpace(Math.min(72, naturalHeight) + 18)
+    heading(images[index].label)
+    const scale = Math.min(naturalScale, (bottomLimit - y - 5) / image.height)
+    const width = image.width * scale
+    const height = image.height * scale
+    docPDF.setFillColor(...SOFT_BG)
+    docPDF.setDrawColor(...LIGHT_GOLD_BORDER)
+    docPDF.setLineWidth(0.35)
+    docPDF.roundedRect(marginX, y - 2, contentWidth, height + 4, 2, 2, 'FD')
+    docPDF.addImage(image.dataUrl, 'PNG', marginX + (contentWidth - width) / 2, y, width, height)
     y += height + 8
-  }
-
-  // =========================
-  // ANULACIÓN
-  // =========================
-
-  if (order.status === 'anulado') {
-    y += 2
-    ensureSpace(16)
-
-    docPDF.setFillColor(253, 235, 235)
-    docPDF.setDrawColor(243, 198, 198)
-    const reasonText = order.cancelReason || 'No definido'
-    const reasonLines = docPDF.splitTextToSize(
-      `Motivo de anulación: ${reasonText}`,
-      contentWidth - 10,
-    )
-    const boxHeight = reasonLines.length * 5.5 + 6
-    docPDF.roundedRect(marginX, y, contentWidth, boxHeight, 2, 2, 'FD')
-
-    docPDF.setFont('helvetica', 'normal')
-    docPDF.setFontSize(10)
-    docPDF.setTextColor(185, 28, 28)
-
-    let reasonY = y + 6
-    reasonLines.forEach((line) => {
-      docPDF.text(line, marginX + 5, reasonY)
-      reasonY += 5.5
-    })
-
-    y += boxHeight + 4
   }
 
   // =========================

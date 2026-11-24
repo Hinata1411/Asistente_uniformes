@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { useAuth } from '../context/authState'
+import { useAuth } from '../context/AuthContext'
 import '../styles/DashboardPage.css'
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -11,8 +11,7 @@ const MONTH_LABELS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ]
 
-// Un pedido solo representa dinero real a partir de que se aprueba.
-// Mientras está pendiente de aprobación no se cuenta en lo económico.
+// El saldo por cobrar se calcula sobre los pedidos aprobados en adelante.
 const APPROVED_ONWARD_STATUSES = [
   'aprobado',
   'en_produccion',
@@ -173,15 +172,6 @@ function StatusIcon({ name }) {
         </svg>
       )
 
-    case 'anulado':
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="9" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-        </svg>
-      )
-
     default:
       return null
   }
@@ -215,13 +205,8 @@ const STATUS_CARDS = [
   },
   {
     key: 'en_arreglo',
-    label: 'En arreglo ',
+    label: 'En arreglo',
     className: 'stat-sky'
-  },
-  {
-    key: 'anulado',
-    label: 'Anulados',
-    className: 'stat-red'
   }
 ]
 
@@ -302,13 +287,11 @@ function DashboardPage() {
   }, [summaryOrders])
 
   const economicSummary = useMemo(() => {
-    // Solo lo aprobado en adelante representa dinero real: un pedido
-    // pendiente de aprobación todavía no compromete ningún cobro.
     const approvedOrders = summaryOrders.filter((order) =>
       APPROVED_ONWARD_STATUSES.includes(order.status)
     )
 
-    const quotedTotal = approvedOrders.reduce(
+    const quotedTotal = summaryOrders.reduce(
       (sum, order) => sum + (Number(order.quoteTotal) || 0),
       0
     )
@@ -414,33 +397,33 @@ function DashboardPage() {
   return (
     <div className="dashboard-page">
       <div className="dashboard-header">
-        <h2 className="page-title">
-          Hola, {greeting.toLowerCase()}
-        </h2>
-        <p className="page-subtitle">
-          {displayName}, este es el resumen de hoy.
-        </p>
+        <div>
+          <h2 className="page-title">
+            Hola, {greeting.toLowerCase()}
+          </h2>
+          <p className="page-subtitle">
+            {displayName}, este es el resumen de hoy.
+          </p>
+        </div>
+        <div className="dashboard-summary-filter" role="group" aria-label="Filtrar resumen por fechas">
+          <label>
+            Desde
+            <input type="date" value={summaryStartDate} onChange={(event) => setSummaryStartDate(event.target.value)} />
+          </label>
+          <label>
+            Hasta
+            <input type="date" value={summaryEndDate} onChange={(event) => setSummaryEndDate(event.target.value)} />
+          </label>
+        </div>
       </div>
 
       {loadError && (
         <div className="alert alert-danger">{loadError}</div>
       )}
 
-      <div className="dashboard-summary-filter" aria-label="Filtrar resumen por fechas">
-        <strong>Resumen de pedidos</strong>
-        <label>
-          Desde
-          <input type="date" value={summaryStartDate} onChange={(event) => setSummaryStartDate(event.target.value)} />
-        </label>
-        <label>
-          Hasta
-          <input type="date" value={summaryEndDate} onChange={(event) => setSummaryEndDate(event.target.value)} />
-        </label>
-      </div>
-
       <div className="econ-grid">
         <div className="econ-card">
-          <span>Total cotizado (pedidos aprobados)</span>
+          <span>Importe total de pedidos</span>
           <strong>Q{economicSummary.quotedTotal.toFixed(2)}</strong>
         </div>
 
@@ -450,235 +433,237 @@ function DashboardPage() {
         </div>
       </div>
 
-      <div className="stat-grid">
-        <div className="stat-card stat-total">
-          <div className="stat-card-icon">
-            <StatusIcon name="total" />
-          </div>
-
-          <div className="stat-card-body">
-            <span className="stat-card-label">Total de pedidos</span>
-            <strong className="stat-card-value">
-              {loading ? '—' : total}
-            </strong>
-          </div>
-        </div>
-
-        {STATUS_CARDS.map((card) => (
-          <div
-            key={card.key}
-            className={`stat-card ${card.className}`}
-          >
+      <div className="dashboard-overview">
+        <div className="stat-grid">
+          <div className="stat-card stat-total">
             <div className="stat-card-icon">
-              <StatusIcon name={card.key} />
+              <StatusIcon name="total" />
             </div>
 
             <div className="stat-card-body">
-              <span className="stat-card-label">{card.label}</span>
+              <span className="stat-card-label">Total de pedidos</span>
               <strong className="stat-card-value">
-                {loading ? '—' : statusCounts[card.key]}
+                {loading ? '—' : total}
               </strong>
             </div>
           </div>
-        ))}
-      </div>
 
-      <div className="calendar-card">
-        <div className="calendar-header">
-          <h3>Calendario de pedidos</h3>
-
-          <div className="calendar-nav">
-            <button
-              type="button"
-              className="calendar-nav-btn"
-              onClick={goToPreviousMonth}
-              aria-label="Mes anterior"
+          {STATUS_CARDS.map((card) => (
+            <div
+              key={card.key}
+              className={`stat-card ${card.className}`}
             >
-              ‹
-            </button>
+              <div className="stat-card-icon">
+                <StatusIcon name={card.key} />
+              </div>
 
-            <div className="calendar-month-picker">
+              <div className="stat-card-body">
+                <span className="stat-card-label">{card.label}</span>
+                <strong className="stat-card-value">
+                  {loading ? '—' : statusCounts[card.key]}
+                </strong>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="calendar-card">
+          <div className="calendar-header">
+            <h3>Calendario de pedidos</h3>
+
+            <div className="calendar-nav">
               <button
                 type="button"
-                className="calendar-nav-month"
-                onClick={openMonthPicker}
+                className="calendar-nav-btn"
+                onClick={goToPreviousMonth}
+                aria-label="Mes anterior"
               >
-                {MONTH_LABELS[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+                ‹
               </button>
 
-              {isMonthPickerOpen && (
-                <>
-                  <div
-                    className="calendar-picker-backdrop"
-                    onClick={closeMonthPicker}
-                  />
+              <div className="calendar-month-picker">
+                <button
+                  type="button"
+                  className="calendar-nav-month"
+                  onClick={openMonthPicker}
+                >
+                  {MONTH_LABELS[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+                </button>
 
-                  <div className="calendar-picker">
-                    <div className="calendar-picker-year">
-                      <button
-                        type="button"
-                        onClick={() => setPickerYear((year) => year - 1)}
-                        aria-label="Año anterior"
-                      >
-                        ‹
-                      </button>
+                {isMonthPickerOpen && (
+                  <>
+                    <div
+                      className="calendar-picker-backdrop"
+                      onClick={closeMonthPicker}
+                    />
 
-                      <strong>{pickerYear}</strong>
-
-                      <button
-                        type="button"
-                        onClick={() => setPickerYear((year) => year + 1)}
-                        aria-label="Año siguiente"
-                      >
-                        ›
-                      </button>
-                    </div>
-
-                    <div className="calendar-picker-months">
-                      {MONTH_LABELS.map((label, index) => (
+                    <div className="calendar-picker">
+                      <div className="calendar-picker-year">
                         <button
                           type="button"
-                          key={label}
-                          className={
-                            index === calendarMonth.getMonth() &&
-                            pickerYear === calendarMonth.getFullYear()
-                              ? 'is-active'
-                              : ''
-                          }
-                          onClick={() => pickMonth(index)}
+                          onClick={() => setPickerYear((year) => year - 1)}
+                          aria-label="Año anterior"
                         >
-                          {label.slice(0, 3)}
+                          ‹
                         </button>
-                      ))}
+
+                        <strong>{pickerYear}</strong>
+
+                        <button
+                          type="button"
+                          onClick={() => setPickerYear((year) => year + 1)}
+                          aria-label="Año siguiente"
+                        >
+                          ›
+                        </button>
+                      </div>
+
+                      <div className="calendar-picker-months">
+                        {MONTH_LABELS.map((label, index) => (
+                          <button
+                            type="button"
+                            key={label}
+                            className={
+                              index === calendarMonth.getMonth() &&
+                              pickerYear === calendarMonth.getFullYear()
+                                ? 'is-active'
+                                : ''
+                            }
+                            onClick={() => pickMonth(index)}
+                          >
+                            {label.slice(0, 3)}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="calendar-picker-today"
+                        onClick={goToTodayFromPicker}
+                      >
+                        Ir a hoy
+                      </button>
                     </div>
+                  </>
+                )}
+              </div>
 
-                    <button
-                      type="button"
-                      className="calendar-picker-today"
-                      onClick={goToTodayFromPicker}
-                    >
-                      Ir a hoy
-                    </button>
-                  </div>
-                </>
-              )}
+              <button
+                type="button"
+                className="calendar-nav-btn"
+                onClick={goToNextMonth}
+                aria-label="Mes siguiente"
+              >
+                ›
+              </button>
             </div>
-
-            <button
-              type="button"
-              className="calendar-nav-btn"
-              onClick={goToNextMonth}
-              aria-label="Mes siguiente"
-            >
-              ›
-            </button>
           </div>
-        </div>
 
-        <div className="calendar-legend">
-          <span className="calendar-legend-item">
-            <span className="calendar-legend-dot calendar-legend-dot-orders" />
-            Pedidos registrados
-          </span>
+          <div className="calendar-legend">
+            <span className="calendar-legend-item">
+              <span className="calendar-legend-dot calendar-legend-dot-orders" />
+              Pedidos registrados
+            </span>
 
-          <span className="calendar-legend-item">
-            <span className="calendar-legend-dot calendar-legend-dot-delivery" />
-            Fecha de entrega
-          </span>
-        </div>
+            <span className="calendar-legend-item">
+              <span className="calendar-legend-dot calendar-legend-dot-delivery" />
+              Fecha de entrega
+            </span>
+          </div>
 
-        <div className="calendar-weekdays">
-          {WEEKDAY_LABELS.map((label, index) => (
-            <span key={`${label}-${index}`}>{label}</span>
-          ))}
-        </div>
+          <div className="calendar-weekdays">
+            {WEEKDAY_LABELS.map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
+            ))}
+          </div>
 
-        <div className="calendar-grid">
-          {calendarWeeks.map((week, weekIndex) => (
-            <div className="calendar-week" key={weekIndex}>
-              {week.map((day, dayIndex) => {
-                const dayOrders = ordersByDay[day.key] || []
-                const dayDeliveries = deliveriesByDay[day.key] || []
-                const hasData = dayOrders.length > 0 || dayDeliveries.length > 0
+          <div className="calendar-grid">
+            {calendarWeeks.map((week, weekIndex) => (
+              <div className="calendar-week" key={weekIndex}>
+                {week.map((day, dayIndex) => {
+                  const dayOrders = ordersByDay[day.key] || []
+                  const dayDeliveries = deliveriesByDay[day.key] || []
+                  const hasData = dayOrders.length > 0 || dayDeliveries.length > 0
 
-                return (
-                  <div
-                    key={day.key}
-                    className={[
-                      'calendar-day',
-                      day.inCurrentMonth ? '' : 'is-outside',
-                      day.key === todayKey ? 'is-today' : '',
-                      hasData ? 'has-data' : '',
-                      dayIndex === 0 ? 'is-first-col' : '',
-                      dayIndex === week.length - 1 ? 'is-last-col' : ''
-                    ].join(' ').trim()}
-                  >
-                    <span className="calendar-day-number">
-                      {day.date.getDate()}
-                    </span>
+                  return (
+                    <div
+                      key={day.key}
+                      className={[
+                        'calendar-day',
+                        day.inCurrentMonth ? '' : 'is-outside',
+                        day.key === todayKey ? 'is-today' : '',
+                        hasData ? 'has-data' : '',
+                        dayIndex === 0 ? 'is-first-col' : '',
+                        dayIndex === week.length - 1 ? 'is-last-col' : ''
+                      ].join(' ').trim()}
+                    >
+                      <span className="calendar-day-number">
+                        {day.date.getDate()}
+                      </span>
 
-                    {hasData && (
-                      <div className="calendar-day-markers">
-                        {dayOrders.length > 0 && (
-                          <span className="calendar-marker calendar-marker-orders">
-                            {dayOrders.length}
-                          </span>
-                        )}
+                      {hasData && (
+                        <div className="calendar-day-markers">
+                          {dayOrders.length > 0 && (
+                            <span className="calendar-marker calendar-marker-orders">
+                              {dayOrders.length}
+                            </span>
+                          )}
 
-                        {dayDeliveries.length > 0 && (
-                          <span className="calendar-marker calendar-marker-delivery">
-                            {dayDeliveries.length}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                          {dayDeliveries.length > 0 && (
+                            <span className="calendar-marker calendar-marker-delivery">
+                              {dayDeliveries.length}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
-                    {hasData && (
-                      <div className="calendar-day-tooltip">
-                        {dayOrders.length > 0 && (
-                          <div className="tooltip-section">
-                            <p className="tooltip-title">
-                              <span className="calendar-legend-dot calendar-legend-dot-orders" />
-                              {dayOrders.length} pedido{dayOrders.length === 1 ? '' : 's'} registrado{dayOrders.length === 1 ? '' : 's'}
-                            </p>
+                      {hasData && (
+                        <div className="calendar-day-tooltip">
+                          {dayOrders.length > 0 && (
+                            <div className="tooltip-section">
+                              <p className="tooltip-title">
+                                <span className="calendar-legend-dot calendar-legend-dot-orders" />
+                                {dayOrders.length} pedido{dayOrders.length === 1 ? '' : 's'} registrado{dayOrders.length === 1 ? '' : 's'}
+                              </p>
 
-                            <ul>
-                              {dayOrders.slice(0, 3).map((order) => (
-                                <li key={order.id}>{getCustomerName(order)}</li>
-                              ))}
+                              <ul>
+                                {dayOrders.slice(0, 3).map((order) => (
+                                  <li key={order.id}>{getCustomerName(order)}</li>
+                                ))}
 
-                              {dayOrders.length > 3 && (
-                                <li>+{dayOrders.length - 3} más</li>
-                              )}
-                            </ul>
-                          </div>
-                        )}
+                                {dayOrders.length > 3 && (
+                                  <li>+{dayOrders.length - 3} más</li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
 
-                        {dayDeliveries.length > 0 && (
-                          <div className="tooltip-section">
-                            <p className="tooltip-title">
-                              <span className="calendar-legend-dot calendar-legend-dot-delivery" />
-                              {dayDeliveries.length} entrega{dayDeliveries.length === 1 ? '' : 's'}
-                            </p>
+                          {dayDeliveries.length > 0 && (
+                            <div className="tooltip-section">
+                              <p className="tooltip-title">
+                                <span className="calendar-legend-dot calendar-legend-dot-delivery" />
+                                {dayDeliveries.length} entrega{dayDeliveries.length === 1 ? '' : 's'}
+                              </p>
 
-                            <ul>
-                              {dayDeliveries.slice(0, 3).map((order) => (
-                                <li key={order.id}>{getCustomerName(order)}</li>
-                              ))}
+                              <ul>
+                                {dayDeliveries.slice(0, 3).map((order) => (
+                                  <li key={order.id}>{getCustomerName(order)}</li>
+                                ))}
 
-                              {dayDeliveries.length > 3 && (
-                                <li>+{dayDeliveries.length - 3} más</li>
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+                                {dayDeliveries.length > 3 && (
+                                  <li>+{dayDeliveries.length - 3} más</li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

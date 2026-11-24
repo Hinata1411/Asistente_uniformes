@@ -1,6 +1,7 @@
-import ExpensesPage from './pages/ExpensesPage'
 import CatalogsPage from './pages/CatalogsPage'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import SalesChartsPage from './pages/SalesChartsPage'
+import ExpensesPage from './pages/ExpensesPage'
+import { BrowserRouter,  Routes, Route, Navigate } from 'react-router-dom'
 
 import CreateOrderPage from './pages/CreateOrderPage'
 import OrdersHistoryPage from './pages/OrdersHistoryPage'
@@ -14,12 +15,14 @@ import ProductsPage from './pages/ProductsPage'
 import CreateProductPage from './pages/CreateProductPage'
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage'
 import ProfilePage from './pages/ProfilePage'
-import { useAuth } from './context/authState'
+import { useAuth } from './context/AuthContext'
 
 function ProtectedLayout({ children, allowedRoles }) {
   return (
     <PrivateRoute allowedRoles={allowedRoles}>
-      <AppLayout>{children}</AppLayout>
+      <AppLayout>
+        {children}
+      </AppLayout>
     </PrivateRoute>
   )
 }
@@ -28,7 +31,11 @@ function RoleRedirect() {
   const { user, role, loading } = useAuth()
 
   if (loading) {
-    return <div className="container py-5 text-center">Cargando...</div>
+    return (
+      <div className="container py-5 text-center">
+        Cargando...
+      </div>
+    )
   }
 
   if (!user) {
@@ -54,6 +61,16 @@ function App() {
 
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedLayout allowedRoles={['admin']}>
+              <DashboardPage />
+            </ProtectedLayout>
+          }
+        />
+
         <Route
           path="/gastos"
           element={
@@ -62,20 +79,12 @@ function App() {
             </ProtectedLayout>
           }
         />
-        <Route
-          path="/catalogos"
-          element={
-            <ProtectedLayout allowedRoles={['admin', 'empleado']}>
-              <CatalogsPage />
-            </ProtectedLayout>
-          }
-        />
 
         <Route
-          path="/dashboard"
+          path="/graficas"
           element={
             <ProtectedLayout allowedRoles={['admin']}>
-              <DashboardPage />
+              <SalesChartsPage />
             </ProtectedLayout>
           }
         />
@@ -103,6 +112,15 @@ function App() {
           element={
             <ProtectedLayout allowedRoles={['admin', 'empleado']}>
               <OrdersHistoryPage />
+            </ProtectedLayout>
+          }
+        />
+
+        <Route
+          path="/catalogos"
+          element={
+            <ProtectedLayout allowedRoles={['admin', 'empleado']}>
+              <CatalogsPage />
             </ProtectedLayout>
           }
         />
@@ -137,15 +155,23 @@ function App() {
         <Route
           path="/perfil"
           element={
-            <ProtectedLayout allowedRoles={['admin', 'empleado']}>
+            <ProtectedLayout
+              allowedRoles={['admin', 'empleado']}
+            >
               <ProfilePage />
             </ProtectedLayout>
           }
         />
 
-        <Route path="/" element={<RoleRedirect />} />
+        <Route
+          path="/"
+          element={<RoleRedirect />}
+        />
 
-        <Route path="*" element={<RoleRedirect />} />
+        <Route
+          path="*"
+          element={<RoleRedirect />}
+        />
       </Routes>
     </BrowserRouter>
   )

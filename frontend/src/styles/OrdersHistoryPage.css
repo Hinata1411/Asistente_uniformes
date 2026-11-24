@@ -126,7 +126,7 @@
   border-radius: 12px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
   padding: 16px;
-  max-height: min(460px, 65vh);
+  max-height: min(70vh, 720px);
   overflow: auto;
   overflow-wrap: anywhere;
   font-size: 13px;

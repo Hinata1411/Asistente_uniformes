@@ -1,12 +1,15 @@
 rules_version = '2';
-// Reglas de Firebase Storage: solo usuarios autenticados, imágenes de hasta 5 MB.
 service firebase.storage {
-  match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
-    }
+ match /b/{bucket}/o {
+  function profile(){return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;}
+  function staff(){return request.auth != null && profile().role in ['admin','empleado'] && profile().get('active',true)==true;}
+  function admin(){return staff() && profile().role=='admin';}
+  function image(){return request.resource.size<5*1024*1024 && request.resource.contentType in ['image/jpeg','image/png','image/webp'];}
+  match /products/{path=**}{allow read: if staff(); allow create,update: if admin() && image(); allow delete: if admin();}
+  match /{folder}/{path=**}{
+   allow read: if staff() && folder in ['orders','customer-garments','order-elements','order-references'];
+   allow create,update: if staff() && folder in ['orders','customer-garments','order-elements','order-references'] && image();
+   allow delete: if staff() && folder in ['orders','customer-garments','order-elements','order-references'];
   }
+ }
 }
